@@ -200,7 +200,7 @@ export default function DashboardPage() {
                 <hr className="border-border" />
                 <ForecastRow label="Suscripciones" amount={sel.forecastSubs} icon="↻" />
                 <ForecastRow label="Créditos" amount={sel.forecastLoans} icon="🏦" />
-                <ForecastRow label="Cuotas tarjetas (conocidas)" amount={sel.forecastCC} icon="💳" />
+                <ForecastRow label="Cuotas tarjetas" amount={sel.forecastCC} icon="💳" />
                 <hr className="border-border" />
                 <div className="flex items-center justify-between font-semibold">
                   <span>Disponible estimado</span>
