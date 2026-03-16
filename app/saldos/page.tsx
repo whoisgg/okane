@@ -175,15 +175,15 @@ export default function SaldosPage() {
     setTransactions((data ?? []) as Transaction[])
   }, [])
 
+  const allItems = view === 'tarjetas'
+    ? cards.map(c => ({ type: 'card' as const, item: c }))
+    : accounts.map(a => ({ type: 'account' as const, item: a }))
+
   useEffect(() => { load() }, [load])
   useEffect(() => {
     const item = allItems[selectedCard]
     if (item) loadTxs(item.item.id, item.type)
   }, [allItems, selectedCard, loadTxs])
-
-  const allItems = view === 'tarjetas'
-    ? cards.map(c => ({ type: 'card' as const, item: c }))
-    : accounts.map(a => ({ type: 'account' as const, item: a }))
 
   // Reset carousel position when switching views
   function switchView(v: 'tarjetas' | 'cuentas') {
