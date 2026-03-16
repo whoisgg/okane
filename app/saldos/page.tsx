@@ -162,22 +162,24 @@ export default function SaldosPage() {
     setAddingCard(false)
   }
 
-  const loadTxs = useCallback(async (cardId: string) => {
+  const loadTxs = useCallback(async (id: string, type: 'card' | 'account') => {
     const sb = getClient()
-    const { data } = await sb
+    const query = sb
       .from('transactions')
       .select('*')
-      .eq('credit_card_id', cardId)
       .order('date', { ascending: false })
       .limit(100)
+    const { data } = type === 'card'
+      ? await query.eq('credit_card_id', id)
+      : await query.eq('bank_account_id', id)
     setTransactions((data ?? []) as Transaction[])
   }, [])
 
   useEffect(() => { load() }, [load])
   useEffect(() => {
-    const card = cards[selectedCard]
-    if (card) loadTxs(card.id)
-  }, [cards, selectedCard, loadTxs])
+    const item = allItems[selectedCard]
+    if (item) loadTxs(item.item.id, item.type)
+  }, [allItems, selectedCard, loadTxs])
 
   const allItems = view === 'tarjetas'
     ? cards.map(c => ({ type: 'card' as const, item: c }))
@@ -193,7 +195,9 @@ export default function SaldosPage() {
   const current      = allItems[selectedCard]
   const facturados   = transactions.filter(t => t.is_from_cartola || t.match_status === 'matched')
   const sinFacturar  = transactions.filter(t => !t.is_from_cartola && t.match_status !== 'matched')
-  const displayedTxs = tab === 'facturado' ? facturados : sinFacturar
+  const displayedTxs = current?.type === 'account'
+    ? transactions                                        // accounts: show all
+    : tab === 'facturado' ? facturados : sinFacturar      // cards: filtered by tab
 
   // ── Month navigation ───────────────────────────────────────────────────────
   const months = Array.from(
@@ -436,30 +440,34 @@ export default function SaldosPage() {
           )}
         </div>}
 
-        {/* Transaction tabs */}
-        {current?.type === 'card' && (
+        {/* Transaction section */}
+        {current && (
           <div className="card overflow-hidden">
-            {/* Tab row */}
-            <div className="flex border-b border-border">
-              <button
-                onClick={() => { setTab('sin-facturar'); setSelectedMonth('') }}
-                className={`flex-1 py-3 text-sm font-medium transition ${tab === 'sin-facturar' ? 'border-b-2 border-warning text-warning' : 'text-text-secondary'}`}
-              >
-                Sin facturar{' '}
-                <span className="ml-1 rounded-full bg-warning/10 px-1.5 text-xs text-warning">{sinFacturar.length}</span>
-              </button>
-              <button
-                onClick={() => { setTab('facturado'); setSelectedMonth('') }}
-                className={`flex-1 py-3 text-sm font-medium transition ${tab === 'facturado' ? 'border-b-2 border-success text-success' : 'text-text-secondary'}`}
-              >
-                Facturados{' '}
-                <span className="ml-1 rounded-full bg-success/10 px-1.5 text-xs text-success">{facturados.length}</span>
-              </button>
-            </div>
+            {/* Credit card: facturado / sin-facturar tabs */}
+            {current.type === 'card' && (
+              <div className="flex border-b border-border">
+                <button
+                  onClick={() => { setTab('sin-facturar'); setSelectedMonth('') }}
+                  className={`flex-1 py-3 text-sm font-medium transition ${tab === 'sin-facturar' ? 'border-b-2 border-warning text-warning' : 'text-text-secondary'}`}
+                >
+                  Sin facturar{' '}
+                  <span className="ml-1 rounded-full bg-warning/10 px-1.5 text-xs text-warning">{sinFacturar.length}</span>
+                </button>
+                <button
+                  onClick={() => { setTab('facturado'); setSelectedMonth('') }}
+                  className={`flex-1 py-3 text-sm font-medium transition ${tab === 'facturado' ? 'border-b-2 border-success text-success' : 'text-text-secondary'}`}
+                >
+                  Facturados{' '}
+                  <span className="ml-1 rounded-full bg-success/10 px-1.5 text-xs text-success">{facturados.length}</span>
+                </button>
+              </div>
+            )}
 
             {displayedTxs.length === 0 ? (
               <p className="py-10 text-center text-sm text-text-muted">
-                {tab === 'facturado' ? 'Sube una cartola para ver gastos facturados' : 'Todo reconciliado ✓'}
+                {current.type === 'account'
+                  ? 'Sin movimientos registrados'
+                  : tab === 'facturado' ? 'Sube una cartola para ver gastos facturados' : 'Todo reconciliado ✓'}
               </p>
             ) : (
               <>
