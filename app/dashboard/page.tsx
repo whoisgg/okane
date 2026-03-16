@@ -39,6 +39,7 @@ export default function DashboardPage() {
   const [subs, setSubs] = useState<Subscription[]>([])
   const [loans, setLoans] = useState<Loan[]>([])
   const [cards, setCards] = useState<CreditCard[]>([])
+  const [cardTxs, setCardTxs] = useState<{ credit_card_id: string; amount: number; date: string }[]>([])
   const [settings, setSettings] = useState<UserSettings | null>(null)
 
   const load = useCallback(async () => {
@@ -46,7 +47,7 @@ export default function DashboardPage() {
     setLoading(true)
 
     // Parallel fetch
-    const [txRes, instRes, subsRes, loansRes, settingsRes, cardsRes] = await Promise.all([
+    const [txRes, instRes, subsRes, loansRes, settingsRes, cardsRes, cardTxsRes] = await Promise.all([
       sb.from('transactions').select('amount,currency,date,is_from_cartola').eq('type', 'expense'),
       sb.from('transactions')
         .select('amount,date,installment_number,installment_total,credit_card_id')
@@ -57,6 +58,7 @@ export default function DashboardPage() {
       sb.from('loans').select('*'),
       sb.from('settings').select('*').single(),
       sb.from('credit_cards').select('*').order('created_at'),
+      sb.from('transactions').select('credit_card_id,amount,date').eq('type', 'expense').not('credit_card_id', 'is', null),
     ])
 
     const txRows = txRes.data ?? []
@@ -68,6 +70,7 @@ export default function DashboardPage() {
     setSubs(subsData)
     setLoans(loansData)
     setCards((cardsRes.data ?? []) as CreditCard[])
+    setCardTxs((cardTxsRes.data ?? []) as { credit_card_id: string; amount: number; date: string }[])
     setSettings(settingsData)
 
     // Build installment projections: remaining cuotas per month key
@@ -293,62 +296,86 @@ export default function DashboardPage() {
               </>
             )}
 
-            {activeTab === 'tarjetas' && (
+            {activeTab === 'tarjetas' && sel && (
               <>
-                {/* Total across all cards */}
-                <div className="flex items-center justify-between pb-1">
-                  <span className="text-sm text-text-secondary">Deuda total tarjetas</span>
-                  <span className="font-bold text-danger">
-                    {clpFormatted(cards.reduce((s, c) => s + Number(c.balance), 0))}
-                  </span>
-                </div>
-
                 {cards.length === 0 ? (
                   <p className="py-6 text-center text-sm text-text-muted">Sin tarjetas registradas</p>
                 ) : (
-                  cards.map(card => {
-                    const bank = (card.bank ?? 'unknown').toLowerCase()
-                    const colors = BANK_COLORS[bank] ?? BANK_COLORS.unknown
-                    const textColor = BANK_TEXT[bank] ?? BANK_TEXT.unknown
-                    const today = new Date().getDate()
-                    const closeDay = card.closing_day
-                    // Days until next closing
-                    let daysUntil: number | null = null
-                    if (closeDay) {
-                      daysUntil = closeDay >= today ? closeDay - today : (30 - today + closeDay)
-                    }
+                  <>
+                    {cards.map(card => {
+                      const bank      = (card.bank ?? 'unknown').toLowerCase()
+                      const colors    = BANK_COLORS[bank] ?? BANK_COLORS.unknown
+                      const textColor = BANK_TEXT[bank] ?? BANK_TEXT.unknown
+                      const closeDay  = card.closing_day
 
-                    return (
-                      <div key={card.id} className={`rounded-xl border px-4 py-3 ${colors}`}>
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <p className={`text-sm font-semibold ${textColor}`}>{card.name}</p>
-                            {card.last_four && (
-                              <p className="text-xs text-text-muted font-mono">•••• {card.last_four}</p>
-                            )}
+                      // Billing period total for the selected month
+                      const periodTotal = closeDay
+                        ? billingTotal(cardTxs, card.id, closeDay, sel.month, sel.year)
+                        : null
+
+                      // Billing period label e.g. "21 feb → 20 mar"
+                      let periodLabel = ''
+                      if (closeDay) {
+                        const [start, end] = billingPeriod(closeDay, sel.month, sel.year)
+                        const fmt = (d: Date) => d.toLocaleDateString('es-CL', { day: 'numeric', month: 'short' })
+                        periodLabel = `${fmt(start)} → ${fmt(end)}`
+                      }
+
+                      // Days until closing (only for current month)
+                      const today = new Date()
+                      const isCurrentMonth = sel.month === today.getMonth() + 1 && sel.year === today.getFullYear()
+                      let daysUntil: number | null = null
+                      if (closeDay && isCurrentMonth) {
+                        daysUntil = closeDay >= today.getDate()
+                          ? closeDay - today.getDate()
+                          : (30 - today.getDate() + closeDay)
+                      }
+
+                      return (
+                        <div key={card.id} className={`rounded-xl border px-4 py-3 ${colors}`}>
+                          <div className="flex items-start justify-between">
+                            <div>
+                              <p className={`text-sm font-semibold ${textColor}`}>{card.name}</p>
+                              {card.last_four && (
+                                <p className="text-xs text-text-muted font-mono">•••• {card.last_four}</p>
+                              )}
+                            </div>
+                            <div className="text-right">
+                              {periodTotal !== null ? (
+                                <p className={`text-base font-bold ${periodTotal > 0 ? 'text-danger' : 'text-text-muted'}`}>
+                                  {periodTotal > 0 ? clpFormatted(periodTotal) : '$0'}
+                                </p>
+                              ) : (
+                                <p className="text-sm text-text-muted">Sin fecha cierre</p>
+                              )}
+                            </div>
                           </div>
-                          <div className="text-right">
-                            <p className="text-base font-bold text-danger">{clpFormatted(Number(card.balance))}</p>
-                            {card.balance_usd > 0 && (
-                              <p className="text-xs text-text-muted">+ USD {card.balance_usd.toLocaleString()}</p>
-                            )}
-                          </div>
+                          {closeDay && (
+                            <div className="mt-2 flex items-center justify-between">
+                              <span className="text-xs text-text-muted">{periodLabel}</span>
+                              {daysUntil !== null && (
+                                <span className={`text-xs font-medium ${daysUntil <= 5 ? 'text-danger' : 'text-text-muted'}`}>
+                                  {daysUntil === 0 ? 'Cierra hoy' : `cierra en ${daysUntil} días`}
+                                </span>
+                              )}
+                            </div>
+                          )}
                         </div>
-                        {closeDay && (
-                          <div className="mt-2 flex items-center justify-between">
-                            <span className="text-xs text-text-muted">
-                              Cierra día {closeDay}
-                            </span>
-                            {daysUntil !== null && (
-                              <span className={`text-xs font-medium ${daysUntil <= 5 ? 'text-danger' : 'text-text-muted'}`}>
-                                {daysUntil === 0 ? 'Cierra hoy' : `en ${daysUntil} días`}
-                              </span>
-                            )}
-                          </div>
+                      )
+                    })}
+
+                    {/* Total for the period */}
+                    <div className="flex items-center justify-between pt-1 border-t border-border">
+                      <span className="text-sm font-semibold text-text-secondary">Total a pagar</span>
+                      <span className="font-bold text-danger">
+                        {clpFormatted(
+                          cards.reduce((s, c) =>
+                            s + (c.closing_day ? billingTotal(cardTxs, c.id, c.closing_day, sel.month, sel.year) : 0), 0
+                          )
                         )}
-                      </div>
-                    )
-                  })
+                      </span>
+                    </div>
+                  </>
                 )}
               </>
             )}
@@ -357,6 +384,33 @@ export default function DashboardPage() {
       </div>
     </AppShell>
   )
+}
+
+// Given a card's closing_day and the selected month/year, return the billing period [start, end] as Date objects
+function billingPeriod(closingDay: number, month: number, year: number): [Date, Date] {
+  const end = new Date(year, month - 1, closingDay)
+  // Start = closing_day + 1 of previous month
+  const prevMonth = month === 1 ? 12 : month - 1
+  const prevYear  = month === 1 ? year - 1 : year
+  const start = new Date(prevYear, prevMonth - 1, closingDay + 1)
+  return [start, end]
+}
+
+function billingTotal(
+  txs: { credit_card_id: string; amount: number; date: string }[],
+  cardId: string,
+  closingDay: number,
+  month: number,
+  year: number
+): number {
+  const [start, end] = billingPeriod(closingDay, month, year)
+  return txs
+    .filter(tx => {
+      if (tx.credit_card_id !== cardId) return false
+      const d = new Date(tx.date)
+      return d >= start && d <= end
+    })
+    .reduce((s, tx) => s + Number(tx.amount), 0)
 }
 
 function ForecastRow({ label, amount, isIncome, icon }: { label: string; amount: number; isIncome?: boolean; icon?: string }) {
