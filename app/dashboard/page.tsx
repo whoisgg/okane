@@ -127,7 +127,7 @@ export default function DashboardPage() {
 
   return (
     <AppShell>
-      <div className="mx-auto max-w-2xl space-y-4 p-6">
+      <div className="mx-auto max-w-2xl space-y-4 p-4 sm:p-6 pb-24 sm:pb-6">
         <h1 className="text-xl font-bold text-text-primary">Flujo de Caja</h1>
 
         {/* Bar chart */}

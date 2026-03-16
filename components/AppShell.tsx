@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { getClient } from '@/lib/supabase'
 import Sidebar from './Sidebar'
+import BottomNav from './BottomNav'
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter()
@@ -27,10 +28,20 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen overflow-hidden bg-bg">
-      <Sidebar />
-      <main className="flex-1 overflow-y-auto">
+      {/* Desktop sidebar — hidden on mobile */}
+      <div className="hidden md:flex">
+        <Sidebar />
+      </div>
+
+      {/* Main content — extra bottom padding on mobile for the tab bar */}
+      <main className="flex-1 overflow-y-auto pb-16 md:pb-0">
         {children}
       </main>
+
+      {/* Mobile bottom nav — hidden on desktop */}
+      <div className="fixed bottom-0 left-0 right-0 z-40 md:hidden">
+        <BottomNav />
+      </div>
     </div>
   )
 }

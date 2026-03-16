@@ -5,10 +5,12 @@ import { usePathname, useRouter } from 'next/navigation'
 import { getClient } from '@/lib/supabase'
 
 const NAV = [
+  { href: "/inicio",       label: "Inicio",         icon: HomeIcon },
   { href: '/dashboard',    label: 'Flujo de Caja',  icon: BarChartIcon },
   { href: '/saldos',       label: 'Saldos',          icon: CreditCardIcon },
   { href: '/transactions', label: 'Movimientos',     icon: ListIcon },
   { href: '/cartolas',     label: 'Cartolas PDF',    icon: DocumentIcon },
+  { href: '/config',       label: 'Configuración',   icon: HomeIcon },
 ]
 
 export default function Sidebar() {
@@ -67,6 +69,15 @@ export default function Sidebar() {
 
 // ── Inline SVG icons ──────────────────────────────────────────────────────────
 
+function HomeIcon({ className, active }: { className?: string; active?: boolean }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.2 : 1.8}>
+      <path d="M3 12L12 3l9 9" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M9 21V12h6v9" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M3 12v9h18v-9" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  )
+}
 function BarChartIcon({ className, active }: { className?: string; active?: boolean }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.2 : 1.8}>

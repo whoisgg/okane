@@ -67,7 +67,7 @@ export default function TransactionsPage() {
 
   return (
     <AppShell>
-      <div className="mx-auto max-w-2xl space-y-4 p-6">
+      <div className="mx-auto max-w-2xl space-y-4 p-4 sm:p-6 pb-24 sm:pb-6">
         <div className="flex items-center justify-between">
           <h1 className="text-xl font-bold text-text-primary">Movimientos</h1>
           <button onClick={() => setShowAdd(true)} className="btn-primary text-xs px-3 py-1.5">

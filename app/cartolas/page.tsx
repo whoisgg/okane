@@ -245,7 +245,7 @@ export default function CartolasPage() {
 
   return (
     <AppShell>
-      <div className="mx-auto max-w-2xl space-y-5 p-6">
+      <div className="mx-auto max-w-2xl space-y-5 p-4 sm:p-6 pb-24 sm:pb-6">
         <h1 className="text-xl font-bold text-text-primary">Cartolas PDF</h1>
 
         <StepIndicator step={step} />

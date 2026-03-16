@@ -6,13 +6,64 @@ import AppShell from '@/components/AppShell'
 import { clpFormatted } from '@/lib/utils'
 import type { CreditCard, BankAccount, Transaction, BankType } from '@/lib/types'
 
-const CARD_GRADIENTS = [
-  'from-[#4F46E5] to-[#7C3AED]',
-  'from-[#0F172A] to-[#1E3A5F]',
-  'from-[#064E3B] to-[#065F46]',
-  'from-[#7C2D12] to-[#9A3412]',
-  'from-[#1E1B4B] to-[#312E81]',
-]
+// ── Bank-branded card themes ──────────────────────────────────────────────────
+type CardTheme = {
+  gradient: string          // tailwind bg-gradient-to-br classes
+  gloss: string             // top-overlay opacity
+  ringColor: string         // decorative ring color (rgba)
+  networkColor: string      // Visa/MC text color
+}
+
+const BANK_THEMES: Record<string, CardTheme> = {
+  falabella: {
+    gradient:     'from-[#006B3C] via-[#00874C] to-[#00A556]',
+    gloss:        'from-white/15',
+    ringColor:    'rgba(255,255,255,0.12)',
+    networkColor: 'rgba(255,255,255,0.85)',
+  },
+  santander: {
+    gradient:     'from-[#A00000] via-[#CC0000] to-[#E8000B]',
+    gloss:        'from-white/15',
+    ringColor:    'rgba(255,255,255,0.12)',
+    networkColor: 'rgba(255,255,255,0.85)',
+  },
+  unknown: {
+    gradient:     'from-[#1E1B4B] via-[#3730A3] to-[#4F46E5]',
+    gloss:        'from-white/10',
+    ringColor:    'rgba(255,255,255,0.10)',
+    networkColor: 'rgba(255,255,255,0.75)',
+  },
+}
+function cardTheme(bank?: string): CardTheme {
+  return BANK_THEMES[(bank ?? 'unknown').toLowerCase()] ?? BANK_THEMES.unknown
+}
+
+// Detect card network from name string
+function cardNetwork(name: string): 'visa' | 'mastercard' | null {
+  const n = name.toLowerCase()
+  if (n.includes('visa')) return 'visa'
+  if (n.includes('mastercard') || n.includes('world elite') || n.includes('world') || n.includes('cmr')) return 'mastercard'
+  return null
+}
+
+// Inline SVG network logos
+function VisaLogo({ color = 'white' }: { color?: string }) {
+  return (
+    <svg viewBox="0 0 48 16" height="16" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <text x="0" y="14" fontFamily="Arial, Helvetica, sans-serif" fontStyle="italic"
+        fontWeight="bold" fontSize="18" fill={color} letterSpacing="-0.5">VISA</text>
+    </svg>
+  )
+}
+function MastercardLogo() {
+  return (
+    <svg viewBox="0 0 38 24" height="24" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="14" cy="12" r="10" fill="#EB001B" opacity="0.9" />
+      <circle cx="24" cy="12" r="10" fill="#F79E1B" opacity="0.9" />
+      <path d="M19 4.8a10 10 0 010 14.4A10 10 0 0119 4.8z" fill="#FF5F00" opacity="0.9" />
+    </svg>
+  )
+}
 
 const BANKS: { id: BankType; label: string; emoji: string }[] = [
   { id: 'falabella', label: 'Falabella', emoji: '🏬' },
@@ -32,6 +83,7 @@ export default function SaldosPage() {
   const [accounts, setAccounts]         = useState<BankAccount[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [selectedCard, setSelectedCard] = useState(0)
+  const [view, setView]                 = useState<'tarjetas' | 'cuentas'>('tarjetas')
   const [tab, setTab]                   = useState<'facturado' | 'sin-facturar'>('sin-facturar')
   const [loading, setLoading]           = useState(true)
   const scrollRef                       = useRef<HTMLDivElement>(null)
@@ -127,10 +179,16 @@ export default function SaldosPage() {
     if (card) loadTxs(card.id)
   }, [cards, selectedCard, loadTxs])
 
-  const allItems = [
-    ...cards.map(c => ({ type: 'card' as const, item: c })),
-    ...accounts.map(a => ({ type: 'account' as const, item: a })),
-  ]
+  const allItems = view === 'tarjetas'
+    ? cards.map(c => ({ type: 'card' as const, item: c }))
+    : accounts.map(a => ({ type: 'account' as const, item: a }))
+
+  // Reset carousel position when switching views
+  function switchView(v: 'tarjetas' | 'cuentas') {
+    setView(v)
+    setSelectedCard(0)
+    if (scrollRef.current) scrollRef.current.scrollLeft = 0
+  }
 
   const current      = allItems[selectedCard]
   const facturados   = transactions.filter(t => t.is_from_cartola || t.match_status === 'matched')
@@ -168,16 +226,47 @@ export default function SaldosPage() {
 
   return (
     <AppShell>
-      <div className="mx-auto max-w-2xl space-y-4 p-6">
+      <div className="mx-auto max-w-2xl space-y-4 p-4 sm:p-6 pb-24 sm:pb-6">
+        {/* Segmented tab + add button */}
         <div className="flex items-center justify-between">
-          <h1 className="text-xl font-bold text-text-primary">Saldos</h1>
+          {/* Pill segmented control */}
+          <div className="flex rounded-xl bg-surface-secondary p-1 gap-1">
+            {(['tarjetas', 'cuentas'] as const).map(v => (
+              <button
+                key={v}
+                onClick={() => switchView(v)}
+                className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition-all ${
+                  view === v
+                    ? 'bg-white text-text-primary shadow-sm dark:bg-surface'
+                    : 'text-text-secondary hover:text-text-primary'
+                }`}
+              >
+                {v === 'tarjetas' ? 'Tarjetas' : 'Cuentas'}
+              </button>
+            ))}
+          </div>
+
+          {/* Contextual add button */}
           <button onClick={openAddCard} className="btn-primary text-xs px-3 py-1.5">
-            + Tarjeta
+            {view === 'tarjetas' ? '+ Tarjeta' : '+ Cuenta'}
           </button>
         </div>
 
+        {/* Empty state */}
+        {allItems.length === 0 && (
+          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border py-16 text-center">
+            <p className="text-3xl mb-3">{view === 'tarjetas' ? '💳' : '🏦'}</p>
+            <p className="text-sm font-medium text-text-secondary">
+              {view === 'tarjetas' ? 'No hay tarjetas aún' : 'No hay cuentas aún'}
+            </p>
+            <p className="mt-1 text-xs text-text-muted">
+              Toca "+ {view === 'tarjetas' ? 'Tarjeta' : 'Cuenta'}" para agregar
+            </p>
+          </div>
+        )}
+
         {/* Card carousel — one card at a time with snap */}
-        <div className="relative -mx-6 px-6">
+        {allItems.length > 0 && <div className="relative -mx-6 px-6">
           <div
             ref={scrollRef}
             className="flex overflow-x-auto gap-4 pb-2 snap-x snap-mandatory select-none"
@@ -194,66 +283,91 @@ export default function SaldosPage() {
             }}
           >
             {allItems.map(({ type, item }, i) => {
-              const gradient = CARD_GRADIENTS[i % CARD_GRADIENTS.length]
-              const isCC     = type === 'card'
-              const cc       = item as CreditCard
-              const ba       = item as BankAccount
+              const isCC       = type === 'card'
+              const cc         = item as CreditCard
+              const ba         = item as BankAccount
               const balanceCLP = Number(item.balance)
               const balanceUSD = isCC ? Number(cc.balance_usd ?? 0) : null
+              const bank       = isCC ? (cc.bank ?? 'unknown') : 'unknown'
+              const theme      = cardTheme(bank)
+              const network    = isCC ? cardNetwork(cc.name) : null
+              const bankLabel  = bank === 'falabella' ? 'Falabella' : bank === 'santander' ? 'Santander' : null
 
               return (
                 <div
                   key={item.id}
-                  className={`relative flex-shrink-0 snap-center rounded-2xl bg-gradient-to-br ${gradient} text-white shadow-lg overflow-hidden`}
+                  className={`relative flex-shrink-0 snap-center rounded-2xl bg-gradient-to-br ${theme.gradient} text-white shadow-xl overflow-hidden`}
                   style={{ width: 'calc(100% - 24px)', minHeight: '11rem' }}
                 >
-                  {/* Subtle gloss overlay */}
-                  <div className="absolute inset-0 bg-gradient-to-b from-white/10 to-transparent pointer-events-none" />
+                  {/* Top gloss */}
+                  <div className={`absolute inset-0 bg-gradient-to-b ${theme.gloss} to-transparent pointer-events-none`} />
 
-                  {/* Chip icon — top right */}
-                  <div className="absolute top-5 right-5 flex gap-0.5 opacity-40">
-                    {[0,1,2,3].map(n => (
-                      <div key={n} className="h-[7px] w-[18px] rounded-[2px] border border-white/80" />
+                  {/* Decorative rings — bottom-right watermark */}
+                  <div className="absolute -bottom-8 -right-8 pointer-events-none">
+                    {[64, 96, 128].map(size => (
+                      <div key={size} className="absolute rounded-full border"
+                        style={{
+                          width: size, height: size,
+                          borderColor: theme.ringColor,
+                          bottom: 0, right: 0,
+                          transform: `translate(${size * 0.3}px, ${size * 0.3}px)`,
+                        }}
+                      />
                     ))}
                   </div>
 
-                  {/* Card name */}
-                  <div className="px-5 pt-5">
+                  {/* Top row: bank name (left) + EMV chip (right) */}
+                  <div className="flex items-start justify-between px-5 pt-5">
+                    {bankLabel ? (
+                      <span className="text-[11px] font-bold tracking-widest uppercase opacity-75 select-none">
+                        {bankLabel}
+                      </span>
+                    ) : <span />}
+
+                    {/* EMV chip */}
+                    <div className="flex flex-col gap-[3px] opacity-50">
+                      {[0,1,2].map(row => (
+                        <div key={row} className="flex gap-[3px]">
+                          {[0,1].map(col => (
+                            <div key={col} className="h-[5px] w-[9px] rounded-[1.5px] bg-white/70" />
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Card name + number */}
+                  <div className="px-5 pt-3">
                     <p className="text-[15px] font-semibold tracking-tight">{item.name}</p>
                     {isCC && cc.last_four && (
-                      <p className="mt-1.5 font-mono text-[13px] tracking-[0.2em] opacity-70">
+                      <p className="mt-1 font-mono text-[13px] tracking-[0.2em] opacity-60">
                         •••• •••• •••• {cc.last_four}
                       </p>
                     )}
                     {!isCC && ba.bank_name && (
-                      <p className="mt-1.5 text-[13px] opacity-60">{ba.bank_name}</p>
+                      <p className="mt-1 text-[13px] opacity-60">{ba.bank_name}</p>
                     )}
                   </div>
 
-                  {/* Balance — bottom section */}
-                  <div className="flex items-end justify-between px-5 pb-5 pt-5">
-                    {/* CLP | USD side by side */}
+                  {/* Bottom row: balances (left) + network logo (right) */}
+                  <div className="flex items-end justify-between px-5 pb-5 pt-4">
+                    {/* CLP | USD */}
                     <div className="flex items-end gap-0">
-                      {/* CLP column */}
                       <div>
                         <p className="text-[9px] font-semibold uppercase tracking-[0.14em] opacity-50 mb-0.5">
                           {isCC ? 'Deuda actual' : 'Saldo'}
                         </p>
-                        <p className="text-[10px] font-bold opacity-65 mb-0.5 tracking-wider">CLP</p>
+                        <p className="text-[10px] font-bold opacity-60 mb-0.5 tracking-wider">CLP</p>
                         <p className="text-[22px] font-bold leading-none tracking-tight">
                           {clpFormatted(balanceCLP)}
                         </p>
                       </div>
-
-                      {/* Divider + USD column — credit cards always */}
                       {isCC && balanceUSD !== null && (
                         <>
                           <div className="mx-3.5 mb-1 w-px self-stretch bg-white/20" />
                           <div>
-                            <p className="text-[9px] font-semibold uppercase tracking-[0.14em] opacity-50 mb-0.5">
-                              &nbsp;
-                            </p>
-                            <p className="text-[10px] font-bold opacity-65 mb-0.5 tracking-wider">USD</p>
+                            <p className="text-[9px] font-semibold uppercase tracking-[0.14em] opacity-50 mb-0.5">&nbsp;</p>
+                            <p className="text-[10px] font-bold opacity-60 mb-0.5 tracking-wider">USD</p>
                             <p className="text-[22px] font-bold leading-none tracking-tight">
                               {usdFormatted(balanceUSD)}
                             </p>
@@ -262,13 +376,17 @@ export default function SaldosPage() {
                       )}
                     </div>
 
-                    {/* Closing day */}
-                    {isCC && cc.closing_day && (
-                      <div className="text-right pb-0.5">
-                        <p className="text-[9px] font-semibold uppercase tracking-[0.12em] opacity-50 mb-0.5">Cierre</p>
-                        <p className="text-[15px] font-semibold">día {cc.closing_day}</p>
-                      </div>
-                    )}
+                    {/* Right column: closing day + network logo stacked */}
+                    <div className="flex flex-col items-end gap-2">
+                      {isCC && cc.closing_day && (
+                        <div className="text-right">
+                          <p className="text-[9px] font-semibold uppercase tracking-[0.12em] opacity-50 mb-0.5">Cierre</p>
+                          <p className="text-[15px] font-semibold">día {cc.closing_day}</p>
+                        </div>
+                      )}
+                      {network === 'visa' && <VisaLogo color={theme.networkColor} />}
+                      {network === 'mastercard' && <MastercardLogo />}
+                    </div>
                   </div>
                 </div>
               )
@@ -316,7 +434,7 @@ export default function SaldosPage() {
               </div>
             </div>
           )}
-        </div>
+        </div>}
 
         {/* Transaction tabs */}
         {current?.type === 'card' && (

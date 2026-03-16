@@ -45,3 +45,6 @@
            text-sm font-medium text-text-primary hover:bg-surface-high active:scale-[0.98] transition;
   }
 }
+
+/* iOS safe area support */
+.pb-safe { padding-bottom: env(safe-area-inset-bottom, 0px); }
