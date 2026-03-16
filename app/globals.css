@@ -1,0 +1,47 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    background-color: #F2F2F7;
+    color: #111827;
+    font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Segoe UI', sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+}
+
+@layer components {
+  /* Premium card — mirrors iOS .premiumCard() */
+  .card {
+    @apply bg-surface rounded-xl shadow-card;
+  }
+
+  /* Pill badge */
+  .badge {
+    @apply text-[10px] font-semibold px-2 py-0.5 rounded-full;
+  }
+
+  /* Input field */
+  .input {
+    @apply w-full rounded-lg border border-border bg-surface-high px-3 py-2 text-sm
+           text-text-primary placeholder-text-muted outline-none
+           focus:border-accent focus:ring-1 focus:ring-accent/30 transition;
+  }
+
+  /* Primary button */
+  .btn-primary {
+    @apply inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold
+           text-white shadow-sm hover:bg-indigo-500 active:scale-[0.98] transition disabled:opacity-50;
+  }
+
+  /* Secondary button */
+  .btn-secondary {
+    @apply inline-flex items-center gap-2 rounded-lg border border-border bg-surface px-4 py-2
+           text-sm font-medium text-text-primary hover:bg-surface-high active:scale-[0.98] transition;
+  }
+}
