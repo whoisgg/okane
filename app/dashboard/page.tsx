@@ -5,7 +5,18 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 
 import { getClient } from '@/lib/supabase'
 import AppShell from '@/components/AppShell'
 import { clpFormatted, clpAbbreviated, shortMonthLabel, monthYearLabel } from '@/lib/utils'
-import type { Transaction, Subscription, Loan, UserSettings } from '@/lib/types'
+import type { Transaction, Subscription, Loan, UserSettings, CreditCard } from '@/lib/types'
+
+const BANK_COLORS: Record<string, string> = {
+  falabella: 'bg-emerald-50 border-emerald-200',
+  santander: 'bg-red-50 border-red-200',
+  unknown:   'bg-surface-high border-border',
+}
+const BANK_TEXT: Record<string, string> = {
+  falabella: 'text-emerald-700',
+  santander: 'text-red-700',
+  unknown:   'text-text-secondary',
+}
 
 interface MonthData {
   month: number
@@ -27,6 +38,7 @@ export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState<'tarjetas' | 'creditos' | 'suscripciones'>('tarjetas')
   const [subs, setSubs] = useState<Subscription[]>([])
   const [loans, setLoans] = useState<Loan[]>([])
+  const [cards, setCards] = useState<CreditCard[]>([])
   const [settings, setSettings] = useState<UserSettings | null>(null)
 
   const load = useCallback(async () => {
@@ -34,7 +46,7 @@ export default function DashboardPage() {
     setLoading(true)
 
     // Parallel fetch
-    const [txRes, instRes, subsRes, loansRes, settingsRes] = await Promise.all([
+    const [txRes, instRes, subsRes, loansRes, settingsRes, cardsRes] = await Promise.all([
       sb.from('transactions').select('amount,currency,date,is_from_cartola').eq('type', 'expense'),
       sb.from('transactions')
         .select('amount,date,installment_number,installment_total,credit_card_id')
@@ -44,6 +56,7 @@ export default function DashboardPage() {
       sb.from('subscriptions').select('*').eq('is_active', true),
       sb.from('loans').select('*'),
       sb.from('settings').select('*').single(),
+      sb.from('credit_cards').select('*').order('created_at'),
     ])
 
     const txRows = txRes.data ?? []
@@ -54,6 +67,7 @@ export default function DashboardPage() {
 
     setSubs(subsData)
     setLoans(loansData)
+    setCards((cardsRes.data ?? []) as CreditCard[])
     setSettings(settingsData)
 
     // Build installment projections: remaining cuotas per month key
@@ -280,9 +294,63 @@ export default function DashboardPage() {
             )}
 
             {activeTab === 'tarjetas' && (
-              <p className="py-6 text-center text-sm text-text-muted">
-                Ver detalle por tarjeta en <a href="/saldos" className="text-accent underline">Saldos</a>
-              </p>
+              <>
+                {/* Total across all cards */}
+                <div className="flex items-center justify-between pb-1">
+                  <span className="text-sm text-text-secondary">Deuda total tarjetas</span>
+                  <span className="font-bold text-danger">
+                    {clpFormatted(cards.reduce((s, c) => s + Number(c.balance), 0))}
+                  </span>
+                </div>
+
+                {cards.length === 0 ? (
+                  <p className="py-6 text-center text-sm text-text-muted">Sin tarjetas registradas</p>
+                ) : (
+                  cards.map(card => {
+                    const bank = (card.bank ?? 'unknown').toLowerCase()
+                    const colors = BANK_COLORS[bank] ?? BANK_COLORS.unknown
+                    const textColor = BANK_TEXT[bank] ?? BANK_TEXT.unknown
+                    const today = new Date().getDate()
+                    const closeDay = card.closing_day
+                    // Days until next closing
+                    let daysUntil: number | null = null
+                    if (closeDay) {
+                      daysUntil = closeDay >= today ? closeDay - today : (30 - today + closeDay)
+                    }
+
+                    return (
+                      <div key={card.id} className={`rounded-xl border px-4 py-3 ${colors}`}>
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <p className={`text-sm font-semibold ${textColor}`}>{card.name}</p>
+                            {card.last_four && (
+                              <p className="text-xs text-text-muted font-mono">•••• {card.last_four}</p>
+                            )}
+                          </div>
+                          <div className="text-right">
+                            <p className="text-base font-bold text-danger">{clpFormatted(Number(card.balance))}</p>
+                            {card.balance_usd > 0 && (
+                              <p className="text-xs text-text-muted">+ USD {card.balance_usd.toLocaleString()}</p>
+                            )}
+                          </div>
+                        </div>
+                        {closeDay && (
+                          <div className="mt-2 flex items-center justify-between">
+                            <span className="text-xs text-text-muted">
+                              Cierra día {closeDay}
+                            </span>
+                            {daysUntil !== null && (
+                              <span className={`text-xs font-medium ${daysUntil <= 5 ? 'text-danger' : 'text-text-muted'}`}>
+                                {daysUntil === 0 ? 'Cierra hoy' : `en ${daysUntil} días`}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })
+                )}
+              </>
             )}
           </div>
         </div>
