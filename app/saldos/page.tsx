@@ -38,6 +38,14 @@ function cardTheme(bank?: string): CardTheme {
   return BANK_THEMES[(bank ?? 'unknown').toLowerCase()] ?? BANK_THEMES.unknown
 }
 
+// Detect bank from a free-text bank_name (for accounts)
+function bankFromName(bankName?: string): string {
+  const n = (bankName ?? '').toLowerCase()
+  if (n.includes('falabella')) return 'falabella'
+  if (n.includes('santander')) return 'santander'
+  return 'unknown'
+}
+
 // Detect card network from name string
 function cardNetwork(name: string): 'visa' | 'mastercard' | null {
   const n = name.toLowerCase()
@@ -292,7 +300,7 @@ export default function SaldosPage() {
               const ba         = item as BankAccount
               const balanceCLP = Number(item.balance)
               const balanceUSD = isCC ? Number(cc.balance_usd ?? 0) : null
-              const bank       = isCC ? (cc.bank ?? 'unknown') : 'unknown'
+              const bank       = isCC ? (cc.bank ?? 'unknown') : bankFromName(ba.bank_name)
               const theme      = cardTheme(bank)
               const network    = isCC ? cardNetwork(cc.name) : null
               const bankLabel  = bank === 'falabella' ? 'Falabella' : bank === 'santander' ? 'Santander' : null
