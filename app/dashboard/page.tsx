@@ -42,6 +42,64 @@ export default function DashboardPage() {
   const [cardTxs, setCardTxs] = useState<{ credit_card_id: string; amount: number; date: string }[]>([])
   const [settings, setSettings] = useState<UserSettings | null>(null)
 
+  // ── Add subscription ────────────────────────────────────────────────────────
+  const [showAddSub, setShowAddSub] = useState(false)
+  const [subName, setSubName]       = useState('')
+  const [subAmount, setSubAmount]   = useState('')
+  const [subDay, setSubDay]         = useState('')
+  const [savingSub, setSavingSub]   = useState(false)
+
+  async function saveSub() {
+    if (!subName.trim() || !subAmount) return
+    setSavingSub(true)
+    const sb = getClient()
+    await sb.from('subscriptions').insert({
+      name:        subName.trim(),
+      amount:      parseInt(subAmount.replace(/\./g, ''), 10),
+      billing_day: subDay ? parseInt(subDay) : 1,
+      currency:    'CLP',
+      category:    'suscripciones',
+      is_active:   true,
+    })
+    setSubName(''); setSubAmount(''); setSubDay('')
+    setShowAddSub(false); setSavingSub(false)
+    load()
+  }
+
+  // ── Add loan ────────────────────────────────────────────────────────────────
+  const [showAddLoan, setShowAddLoan]       = useState(false)
+  const [loanName, setLoanName]             = useState('')
+  const [loanLender, setLoanLender]         = useState('')
+  const [loanTotal, setLoanTotal]           = useState('')
+  const [loanPayment, setLoanPayment]       = useState('')
+  const [loanBalance, setLoanBalance]       = useState('')
+  const [loanRate, setLoanRate]             = useState('')
+  const [savingLoan, setSavingLoan]         = useState(false)
+
+  async function saveLoan() {
+    if (!loanName.trim() || !loanPayment) return
+    setSavingLoan(true)
+    const sb = getClient()
+    const parse = (v: string) => parseInt(v.replace(/\./g, '') || '0', 10)
+    await sb.from('loans').insert({
+      name:              loanName.trim(),
+      lender:            loanLender.trim() || loanName.trim(),
+      total_amount:      parse(loanTotal) || parse(loanPayment),
+      remaining_balance: parse(loanBalance) || parse(loanTotal) || parse(loanPayment),
+      monthly_payment:   parse(loanPayment),
+      interest_rate:     loanRate ? parseFloat(loanRate) : 0,
+      start_date:        new Date().toISOString().split('T')[0],
+    })
+    setLoanName(''); setLoanLender(''); setLoanTotal('')
+    setLoanPayment(''); setLoanBalance(''); setLoanRate('')
+    setShowAddLoan(false); setSavingLoan(false)
+    load()
+  }
+
+  function clpInput(v: string) {
+    return v.replace(/\D/g, '').replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+  }
+
   const load = useCallback(async () => {
     const sb = getClient()
     setLoading(true)
@@ -250,18 +308,38 @@ export default function DashboardPage() {
                   <span className="text-sm text-text-secondary">Total mensual</span>
                   <span className="font-bold text-text-primary">{clpFormatted(subsTotal)}</span>
                 </div>
-                {subs.length === 0 ? (
-                  <p className="py-6 text-center text-sm text-text-muted">Sin suscripciones</p>
-                ) : (
-                  subs.map(sub => (
-                    <div key={sub.id} className="flex items-center justify-between rounded-lg bg-surface-high px-3 py-2.5">
-                      <div>
-                        <p className="text-sm font-medium text-text-primary">{sub.name}</p>
-                        <p className="text-xs text-text-muted">Día {sub.billing_day}</p>
-                      </div>
-                      <span className="text-sm font-semibold text-text-primary">{clpFormatted(Number(sub.amount))}</span>
+                {subs.map(sub => (
+                  <div key={sub.id} className="flex items-center justify-between rounded-lg bg-surface-high px-3 py-2.5">
+                    <div>
+                      <p className="text-sm font-medium text-text-primary">{sub.name}</p>
+                      <p className="text-xs text-text-muted">Día {sub.billing_day}</p>
                     </div>
-                  ))
+                    <span className="text-sm font-semibold text-text-primary">{clpFormatted(Number(sub.amount))}</span>
+                  </div>
+                ))}
+
+                {showAddSub ? (
+                  <div className="rounded-xl border border-border p-4 space-y-3">
+                    <p className="text-sm font-semibold text-text-primary">Nueva suscripción</p>
+                    <input className="input w-full" placeholder="Nombre (ej. Netflix, Spotify)" value={subName} onChange={e => setSubName(e.target.value)} />
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary text-sm">$</span>
+                        <input className="input pl-6 w-full" placeholder="Monto" inputMode="numeric" value={subAmount} onChange={e => setSubAmount(clpInput(e.target.value))} />
+                      </div>
+                      <input className="input" placeholder="Día cobro" inputMode="numeric" maxLength={2} value={subDay} onChange={e => setSubDay(e.target.value.replace(/\D/g, ''))} />
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => setShowAddSub(false)} className="btn-secondary flex-1">Cancelar</button>
+                      <button onClick={saveSub} disabled={savingSub || !subName || !subAmount} className="btn-primary flex-1 disabled:opacity-40">
+                        {savingSub ? 'Guardando…' : 'Agregar'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button onClick={() => setShowAddSub(true)} className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border py-2.5 text-sm font-medium text-text-muted hover:border-accent hover:text-accent transition-colors">
+                    + Nueva suscripción
+                  </button>
                 )}
               </>
             )}
@@ -272,26 +350,60 @@ export default function DashboardPage() {
                   <span className="text-sm text-text-secondary">Cuota mensual total</span>
                   <span className="font-bold text-text-primary">{clpFormatted(loansTotal)}</span>
                 </div>
-                {loans.length === 0 ? (
-                  <p className="py-6 text-center text-sm text-text-muted">Sin créditos registrados</p>
-                ) : (
-                  loans.map(loan => (
-                    <div key={loan.id} className="rounded-lg bg-surface-high px-3 py-3">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-medium text-text-primary">{loan.name}</p>
-                          <p className="text-xs text-text-muted">{loan.lender}</p>
-                        </div>
-                        <span className="font-semibold text-danger">{clpFormatted(Number(loan.monthly_payment))}/mes</span>
+                {loans.map(loan => (
+                  <div key={loan.id} className="rounded-lg bg-surface-high px-3 py-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-text-primary">{loan.name}</p>
+                        <p className="text-xs text-text-muted">{loan.lender}</p>
                       </div>
-                      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-border">
-                        <div
-                          className="h-full rounded-full bg-accent transition-all"
-                          style={{ width: `${Math.min(100, ((loan.total_amount - loan.remaining_balance) / loan.total_amount) * 100)}%` }}
-                        />
+                      <span className="font-semibold text-danger">{clpFormatted(Number(loan.monthly_payment))}/mes</span>
+                    </div>
+                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-border">
+                      <div
+                        className="h-full rounded-full bg-accent transition-all"
+                        style={{ width: `${Math.min(100, ((loan.total_amount - loan.remaining_balance) / loan.total_amount) * 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+
+                {showAddLoan ? (
+                  <div className="rounded-xl border border-border p-4 space-y-3">
+                    <p className="text-sm font-semibold text-text-primary">Nuevo crédito</p>
+                    <input className="input w-full" placeholder="Nombre (ej. Crédito consumo)" value={loanName} onChange={e => setLoanName(e.target.value)} />
+                    <input className="input w-full" placeholder="Institución (ej. BCI, CMF)" value={loanLender} onChange={e => setLoanLender(e.target.value)} />
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary text-sm">$</span>
+                        <input className="input pl-6 w-full" placeholder="Cuota mensual" inputMode="numeric" value={loanPayment} onChange={e => setLoanPayment(clpInput(e.target.value))} />
+                      </div>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary text-sm">$</span>
+                        <input className="input pl-6 w-full" placeholder="Saldo pendiente" inputMode="numeric" value={loanBalance} onChange={e => setLoanBalance(clpInput(e.target.value))} />
                       </div>
                     </div>
-                  ))
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary text-sm">$</span>
+                        <input className="input pl-6 w-full" placeholder="Monto total (opcional)" inputMode="numeric" value={loanTotal} onChange={e => setLoanTotal(clpInput(e.target.value))} />
+                      </div>
+                      <div className="relative">
+                        <input className="input w-full pr-6" placeholder="Tasa % (opcional)" inputMode="decimal" value={loanRate} onChange={e => setLoanRate(e.target.value)} />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary text-sm">%</span>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => setShowAddLoan(false)} className="btn-secondary flex-1">Cancelar</button>
+                      <button onClick={saveLoan} disabled={savingLoan || !loanName || !loanPayment} className="btn-primary flex-1 disabled:opacity-40">
+                        {savingLoan ? 'Guardando…' : 'Agregar'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button onClick={() => setShowAddLoan(true)} className="flex w-full items-center justify-center gap-2 rounded-xl border-2 border-dashed border-border py-2.5 text-sm font-medium text-text-muted hover:border-accent hover:text-accent transition-colors">
+                    + Nuevo crédito
+                  </button>
                 )}
               </>
             )}
