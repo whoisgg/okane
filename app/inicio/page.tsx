@@ -186,9 +186,17 @@ export default function InicioPage() {
 
     setEmail(userData?.user?.email?.split('@')[0] ?? '')
     setTxs((txRes.data ?? []) as Transaction[])
-    setSettings(settingsRes.data as UserSettings | null)
+    const s = settingsRes.data as UserSettings | null
+    setSettings(s)
+
+    // Redirect to setup wizard if budget not configured
+    if (!s || !s.monthly_budget) {
+      router.replace('/setup')
+      return
+    }
+
     setLoading(false)
-  }, [monthKey])
+  }, [monthKey, router])
 
   useEffect(() => { load() }, [load])
 
