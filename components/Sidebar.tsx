@@ -5,12 +5,14 @@ import { usePathname, useRouter } from 'next/navigation'
 import { getClient } from '@/lib/supabase'
 
 const NAV = [
-  { href: "/inicio",       label: "Inicio",         icon: HomeIcon },
-  { href: '/dashboard',    label: 'Flujo de Caja',  icon: BarChartIcon },
-  { href: '/saldos',       label: 'Saldos',          icon: CreditCardIcon },
-  { href: '/transactions', label: 'Movimientos',     icon: ListIcon },
-  { href: '/cartolas',     label: 'Cartolas PDF',    icon: DocumentIcon },
-  { href: '/config',       label: 'Configuración',   icon: GearIcon },
+  { href: "/inicio",           label: "Inicio",          icon: HomeIcon },
+  { href: '/dashboard',        label: 'Flujo de Caja',   icon: BarChartIcon },
+  { href: '/saldos',           label: 'Saldos',           icon: CreditCardIcon },
+  { href: '/creditos-lista',   label: 'Créditos',         icon: LoanIcon },
+  { href: '/suscripciones',    label: 'Suscripciones',    icon: RepeatIcon },
+  { href: '/transactions',     label: 'Movimientos',      icon: ListIcon },
+  { href: '/cartolas',         label: 'Cartolas PDF',     icon: DocumentIcon },
+  { href: '/config',           label: 'Configuración',    icon: GearIcon },
 ]
 
 export default function Sidebar() {
@@ -106,6 +108,24 @@ function DocumentIcon({ className, active }: { className?: string; active?: bool
     <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.2 : 1.8}>
       <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" strokeLinejoin="round"/>
       <path d="M14 2v6h6M9 13h6M9 17h4" strokeLinecap="round"/>
+    </svg>
+  )
+}
+function LoanIcon({ className, active }: { className?: string; active?: boolean }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.2 : 1.8} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
+      <path d="M9 22V12h6v10"/>
+    </svg>
+  )
+}
+function RepeatIcon({ className, active }: { className?: string; active?: boolean }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.2 : 1.8} strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="17 1 21 5 17 9"/>
+      <path d="M3 11V9a4 4 0 014-4h14"/>
+      <polyline points="7 23 3 19 7 15"/>
+      <path d="M21 13v2a4 4 0 01-4 4H3"/>
     </svg>
   )
 }

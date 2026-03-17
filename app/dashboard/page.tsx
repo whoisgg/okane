@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts'
 import { getClient } from '@/lib/supabase'
 import AppShell from '@/components/AppShell'
+import Link from 'next/link'
 import { clpFormatted, clpAbbreviated, shortMonthLabel, monthYearLabel } from '@/lib/utils'
 import type { Transaction, Subscription, Loan, UserSettings, CreditCard } from '@/lib/types'
 
@@ -318,6 +319,10 @@ export default function DashboardPage() {
                   </div>
                 ))}
 
+                <Link href="/suscripciones" className="flex items-center justify-end gap-1 text-xs text-accent hover:underline">
+                  Ver todas →
+                </Link>
+
                 {showAddSub ? (
                   <div className="rounded-xl border border-border p-4 space-y-3">
                     <p className="text-sm font-semibold text-text-primary">Nueva suscripción</p>
@@ -367,6 +372,10 @@ export default function DashboardPage() {
                     </div>
                   </div>
                 ))}
+
+                <Link href="/creditos-lista" className="flex items-center justify-end gap-1 text-xs text-accent hover:underline">
+                  Ver todos →
+                </Link>
 
                 {showAddLoan ? (
                   <div className="rounded-xl border border-border p-4 space-y-3">
