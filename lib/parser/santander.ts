@@ -32,8 +32,11 @@ export function parseSantander(text: string, lastFour: string): CartolaParseResu
   const periodStartPattern = /PER[ÍI]ODO FACTURADO\s+(\d{2}\/\d{2}\/\d{4})/i
   const periodStart = parseDate(firstMatch(periodStartPattern, text) ?? '') ?? undefined
 
-  // [^$\n]* prevents crossing to the next line (which has an unrelated date)
-  const totalPattern = /MONTO TOTAL FACTURADO A PAGAR[^$\n]*\$\s*([\d.]+)/i
+  // Allow the $ amount to be on the same line OR the very next line.
+  // [^$\n]* stops at the line boundary; \n?\s* then allows one optional newline
+  // before the $. This avoids matching "11/03/2026" (a date on the next line
+  // in the payment stub) because that line starts with a digit, not "$".
+  const totalPattern = /MONTO TOTAL FACTURADO A PAGAR[^$\n]*\n?\s*\$\s*([\d.]+)/i
   const totalAmount = parseAmount(firstMatch(totalPattern, text) ?? '0')
 
   // ── Process line by line ────────────────────────────────────────────────────
