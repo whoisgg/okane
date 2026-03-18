@@ -65,13 +65,21 @@ export default function SetupPage() {
     try {
       const sb = getClient()
 
+      // Get current user
+      const { data: { user } } = await sb.auth.getUser()
+      if (!user) throw new Error('No autenticado')
+
       // Upsert settings
-      const { error: sErr } = await sb.from('settings').upsert({ monthly_budget: clpParse(budget) })
+      const { error: sErr } = await sb.from('settings').upsert(
+        { user_id: user.id, monthly_budget: clpParse(budget) },
+        { onConflict: 'user_id' }
+      )
       if (sErr) throw sErr
 
       // Insert cards
       for (const c of cards) {
         const { error: cErr } = await sb.from('credit_cards').insert({
+          user_id:     user.id,
           name:        c.name.trim(),
           last_four:   c.last_four.trim() || null,
           closing_day: c.closing_day ? parseInt(c.closing_day) : null,
@@ -85,6 +93,7 @@ export default function SetupPage() {
       // Insert accounts
       for (const a of accounts) {
         const { error: aErr } = await sb.from('bank_accounts').insert({
+          user_id:   user.id,
           name:      a.name.trim(),
           bank_name: a.bank_name.trim() || null,
           balance:   clpParse(a.balance),
