@@ -29,7 +29,8 @@ interface MonthData {
   forecastIncome: number
   forecastSubs: number
   forecastLoans: number
-  forecastCC: number
+  forecastCC: number           // total = billed + unbilled
+  forecastCCUnbilled: number   // manual unmatched transactions in billing period
 }
 
 export default function DashboardPage() {
@@ -40,7 +41,8 @@ export default function DashboardPage() {
   const [subs, setSubs] = useState<Subscription[]>([])
   const [loans, setLoans] = useState<Loan[]>([])
   const [cards, setCards] = useState<CreditCard[]>([])
-  const [cardTxs, setCardTxs] = useState<{ credit_card_id: string; amount: number; date: string }[]>([])
+  const [cardTxs, setCardTxs] = useState<{ credit_card_id: string; amount: number; date: string; is_from_cartola?: boolean; match_status?: string }[]>([])
+  const [cartolaUploads, setCartolaUploads] = useState<{ credit_card_id: string; period_end: string; total_amount: number; upcoming_amounts?: { dueDate: string; amount: number }[] }[]>([])
   const [settings, setSettings] = useState<UserSettings | null>(null)
 
   // ── Add subscription ────────────────────────────────────────────────────────
@@ -106,44 +108,30 @@ export default function DashboardPage() {
     setLoading(true)
 
     // Parallel fetch
-    const [txRes, instRes, subsRes, loansRes, settingsRes, cardsRes, cardTxsRes] = await Promise.all([
-      sb.from('transactions').select('amount,currency,date,is_from_cartola').eq('type', 'expense'),
-      sb.from('transactions')
-        .select('amount,date,installment_number,installment_total,credit_card_id')
-        .eq('is_installment', true)
-        .not('installment_number', 'is', null)
-        .not('installment_total', 'is', null),
+    const [txRes, subsRes, loansRes, settingsRes, cardsRes, cardTxsRes, uploadsRes] = await Promise.all([
+      sb.from('transactions').select('amount,currency,date,is_from_cartola,credit_card_id').eq('type', 'expense'),
       sb.from('subscriptions').select('*').eq('is_active', true),
       sb.from('loans').select('*'),
       sb.from('settings').select('*').single(),
       sb.from('credit_cards').select('*').order('created_at'),
-      sb.from('transactions').select('credit_card_id,amount,date').eq('type', 'expense').not('credit_card_id', 'is', null),
+      sb.from('transactions').select('credit_card_id,amount,date,is_from_cartola,match_status').eq('type', 'expense').not('credit_card_id', 'is', null),
+      sb.from('cartola_uploads').select('credit_card_id,period_end,total_amount,upcoming_amounts').eq('status', 'procesada').not('period_end', 'is', null).not('total_amount', 'is', null),
     ])
 
     const txRows = txRes.data ?? []
-    const instRows = instRes.data ?? []
     const subsData = (subsRes.data ?? []) as Subscription[]
     const loansData = (loansRes.data ?? []) as Loan[]
     const settingsData = settingsRes.data as UserSettings | null
+    const cardsData = (cardsRes.data ?? []) as CreditCard[]
+    const cardTxsData = (cardTxsRes.data ?? []) as { credit_card_id: string; amount: number; date: string; is_from_cartola?: boolean; match_status?: string }[]
+    const uploadsData = (uploadsRes.data ?? []) as { credit_card_id: string; period_end: string; total_amount: number; upcoming_amounts?: { dueDate: string; amount: number }[] }[]
 
     setSubs(subsData)
     setLoans(loansData)
-    setCards((cardsRes.data ?? []) as CreditCard[])
-    setCardTxs((cardTxsRes.data ?? []) as { credit_card_id: string; amount: number; date: string }[])
+    setCards(cardsData)
+    setCardTxs(cardTxsData)
+    setCartolaUploads(uploadsData)
     setSettings(settingsData)
-
-    // Build installment projections: remaining cuotas per month key
-    const instProjection: Record<string, number> = {}
-    for (const tx of instRows) {
-      const remaining = (tx.installment_total ?? 0) - (tx.installment_number ?? 0)
-      if (remaining <= 0) continue
-      const txDate = new Date(tx.date)
-      for (let r = 1; r <= remaining; r++) {
-        const projDate = new Date(txDate.getFullYear(), txDate.getMonth() + r, 1)
-        const key = `${projDate.getFullYear()}-${String(projDate.getMonth() + 1).padStart(2, '0')}`
-        instProjection[key] = (instProjection[key] ?? 0) + Number(tx.amount)
-      }
-    }
 
     // Build 6-month rolling window
     const now = new Date()
@@ -156,25 +144,69 @@ export default function DashboardPage() {
       const isForecast = i > 0
 
       if (!isForecast) {
-        const monthTxs = txRows.filter(tx => {
-          const td = new Date(tx.date)
-          return td.getMonth() + 1 === m && td.getFullYear() === y
-        })
-        const total = monthTxs.reduce((s: number, tx: any) => s + Number(tx.amount), 0)
-        const facturado = monthTxs
-          .filter((tx: any) => tx.is_from_cartola)
+        // Non-CC expenses: sum by calendar month
+        const nonCCTotal = txRows
+          .filter((tx: any) => {
+            if (tx.credit_card_id) return false
+            const td = new Date(tx.date)
+            return td.getMonth() + 1 === m && td.getFullYear() === y
+          })
           .reduce((s: number, tx: any) => s + Number(tx.amount), 0)
 
-        result.push({ month: m, year: y, label: shortMonthLabel(m, y), total, facturado, isForecast: false, forecastIncome: 0, forecastSubs: 0, forecastLoans: 0, forecastCC: 0 })
+        // CC expenses: use cartola total when available, else billing period tx sum
+        const ccTotal = cardsData.reduce((s, card) => {
+          if (!card.closing_day) return s
+          const [, periodEnd] = billingPeriod(card.closing_day, m, y)
+          const periodEndStr = periodEnd.toISOString().split('T')[0]
+          const upload = uploadsData.find(u => u.credit_card_id === card.id && u.period_end === periodEndStr)
+          return s + (upload
+            ? Number(upload.total_amount)
+            : billingTotal(cardTxsData, card.id, card.closing_day, m, y))
+        }, 0)
+
+        const total = nonCCTotal + ccTotal
+        const facturado = txRows
+          .filter((tx: any) => {
+            if (!tx.is_from_cartola) return false
+            const td = new Date(tx.date)
+            return td.getMonth() + 1 === m && td.getFullYear() === y
+          })
+          .reduce((s: number, tx: any) => s + Number(tx.amount), 0)
+
+        result.push({ month: m, year: y, label: shortMonthLabel(m, y), total, facturado, isForecast: false, forecastIncome: 0, forecastSubs: 0, forecastLoans: 0, forecastCC: 0, forecastCCUnbilled: 0 })
       } else {
         const income = settingsData?.monthly_budget ?? 0
         const forecastSubs = subsData.reduce((s, sub) => s + Number(sub.amount), 0)
         const forecastLoans = loansData.reduce((s, l) => s + Number(l.monthly_payment), 0)
-        const monthKey = `${y}-${String(m).padStart(2, '0')}`
-        const forecastCC = instProjection[monthKey] ?? 0
+
+        // CC forecast: split into billed (from cartola upcoming_amounts) and unbilled (manual unmatched)
+        let forecastCCBilled = 0
+        let forecastCCUnbilled = 0
+
+        for (const card of cardsData) {
+          if (!card.closing_day) continue
+
+          // Billed: from cartola's upcoming_amounts
+          const latestUpload = uploadsData
+            .filter(u => u.credit_card_id === card.id && u.upcoming_amounts)
+            .sort((a, b) => b.period_end.localeCompare(a.period_end))[0]
+
+          if (latestUpload?.upcoming_amounts) {
+            const match = latestUpload.upcoming_amounts.find(up => {
+              const d = new Date(up.dueDate)
+              return d.getMonth() + 1 === m && d.getFullYear() === y
+            })
+            if (match) forecastCCBilled += match.amount
+          }
+
+          // Unbilled: manual (non-cartola, unmatched) transactions in the billing period
+          forecastCCUnbilled += billingTotalUnbilled(cardTxsData, card.id, card.closing_day, m, y)
+        }
+
+        const forecastCC = forecastCCBilled + forecastCCUnbilled
         const total = income > 0 ? Math.max(0, income - forecastSubs - forecastLoans - forecastCC) : forecastSubs + forecastLoans + forecastCC
 
-        result.push({ month: m, year: y, label: shortMonthLabel(m, y), total, facturado: 0, isForecast: true, forecastIncome: income, forecastSubs, forecastLoans, forecastCC })
+        result.push({ month: m, year: y, label: shortMonthLabel(m, y), total, facturado: 0, isForecast: true, forecastIncome: income, forecastSubs, forecastLoans, forecastCC, forecastCCUnbilled })
       }
     }
 
@@ -276,7 +308,10 @@ export default function DashboardPage() {
                 <hr className="border-border" />
                 <ForecastRow label="Suscripciones" amount={sel.forecastSubs} icon="↻" />
                 <ForecastRow label="Créditos" amount={sel.forecastLoans} icon="🏦" />
-                <ForecastRow label="Cuotas tarjetas" amount={sel.forecastCC} icon="💳" />
+                <ForecastRow label="Tarjetas Facturado" amount={sel.forecastCC - sel.forecastCCUnbilled} icon="💳" />
+                {sel.forecastCCUnbilled > 0 && (
+                  <ForecastRow label="↳ Sin facturar" amount={sel.forecastCCUnbilled} />
+                )}
                 <hr className="border-border" />
                 <div className="flex items-center justify-between font-semibold">
                   <span>Disponible estimado</span>
@@ -430,9 +465,41 @@ export default function DashboardPage() {
                       const closeDay  = card.closing_day
 
                       // Billing period total for the selected month
-                      const periodTotal = closeDay
-                        ? billingTotal(cardTxs, card.id, closeDay, sel.month, sel.year)
-                        : null
+                      // Prefer cartola total (Monto Total Facturado a Pagar) when available
+                      let periodTotal: number | null = null
+                      let periodFromCartola = false
+                      if (closeDay) {
+                        const [, periodEnd] = billingPeriod(closeDay, sel.month, sel.year)
+                        const periodEndStr = periodEnd.toISOString().split('T')[0]
+
+                        // 1. Exact cartola match for this billing period
+                        const upload = cartolaUploads.find(u =>
+                          u.credit_card_id === card.id && u.period_end === periodEndStr
+                        )
+
+                        if (upload) {
+                          periodTotal = upload.total_amount
+                          periodFromCartola = true
+                        } else {
+                          // 2. Check upcoming_amounts from the latest cartola (for future months)
+                          const latestWithUpcoming = cartolaUploads
+                            .filter(u => u.credit_card_id === card.id && u.upcoming_amounts)
+                            .sort((a, b) => b.period_end.localeCompare(a.period_end))[0]
+
+                          const upcoming = latestWithUpcoming?.upcoming_amounts?.find(up => {
+                            const d = new Date(up.dueDate)
+                            return d.getMonth() === periodEnd.getMonth() && d.getFullYear() === periodEnd.getFullYear()
+                          })
+
+                          if (upcoming) {
+                            periodTotal = upcoming.amount
+                            periodFromCartola = true
+                          } else {
+                            // 3. Fallback: sum of transactions in this billing period
+                            periodTotal = billingTotal(cardTxs, card.id, closeDay, sel.month, sel.year)
+                          }
+                        }
+                      }
 
                       // Billing period label e.g. "21 feb → 20 mar"
                       let periodLabel = ''
@@ -442,14 +509,34 @@ export default function DashboardPage() {
                         periodLabel = `${fmt(start)} → ${fmt(end)}`
                       }
 
-                      // Days until closing (only for current month)
+                      // Sin facturar CTA: show when billing period has closed, there are manual unmatched
+                      // transactions, and no exact cartola has been uploaded for that period yet
+                      const unbilledAmount = closeDay
+                        ? billingTotalUnbilled(cardTxs, card.id, closeDay, sel.month, sel.year)
+                        : 0
+                      const hasExactCartola = (() => {
+                        if (!closeDay) return false
+                        const [, pe] = billingPeriod(closeDay, sel.month, sel.year)
+                        const peStr = pe.toISOString().split('T')[0]
+                        return cartolaUploads.some(u => u.credit_card_id === card.id && u.period_end === peStr)
+                      })()
+                      const showUploadCTA = unbilledAmount > 0 && !hasExactCartola
+
+                      // Closing status (only for current month)
                       const today = new Date()
                       const isCurrentMonth = sel.month === today.getMonth() + 1 && sel.year === today.getFullYear()
+                      let closingStatus: 'open' | 'today' | 'closed' | null = null
                       let daysUntil: number | null = null
                       if (closeDay && isCurrentMonth) {
-                        daysUntil = closeDay >= today.getDate()
-                          ? closeDay - today.getDate()
-                          : (30 - today.getDate() + closeDay)
+                        const todayDate = today.getDate()
+                        if (todayDate < closeDay) {
+                          closingStatus = 'open'
+                          daysUntil = closeDay - todayDate
+                        } else if (todayDate === closeDay) {
+                          closingStatus = 'today'
+                        } else {
+                          closingStatus = 'closed'
+                        }
                       }
 
                       return (
@@ -463,9 +550,14 @@ export default function DashboardPage() {
                             </div>
                             <div className="text-right">
                               {periodTotal !== null ? (
-                                <p className={`text-base font-bold ${periodTotal > 0 ? 'text-danger' : 'text-text-muted'}`}>
-                                  {periodTotal > 0 ? clpFormatted(periodTotal) : '$0'}
-                                </p>
+                                <>
+                                  <p className={`text-base font-bold ${periodTotal > 0 ? 'text-danger' : 'text-text-muted'}`}>
+                                    {periodTotal > 0 ? clpFormatted(periodTotal) : '$0'}
+                                  </p>
+                                  {periodFromCartola && (
+                                    <span className="text-[9px] text-text-muted">📄 cartola</span>
+                                  )}
+                                </>
                               ) : (
                                 <p className="text-sm text-text-muted">Sin fecha cierre</p>
                               )}
@@ -474,11 +566,31 @@ export default function DashboardPage() {
                           {closeDay && (
                             <div className="mt-2 flex items-center justify-between">
                               <span className="text-xs text-text-muted">{periodLabel}</span>
-                              {daysUntil !== null && (
+                              {closingStatus === 'closed' && (
+                                <span className="text-xs font-medium text-success">✓ Cerrado</span>
+                              )}
+                              {closingStatus === 'today' && (
+                                <span className="text-xs font-medium text-danger">Cierra hoy</span>
+                              )}
+                              {closingStatus === 'open' && daysUntil !== null && (
                                 <span className={`text-xs font-medium ${daysUntil <= 5 ? 'text-danger' : 'text-text-muted'}`}>
-                                  {daysUntil === 0 ? 'Cierra hoy' : `cierra en ${daysUntil} días`}
+                                  cierra en {daysUntil} día{daysUntil !== 1 ? 's' : ''}
                                 </span>
                               )}
+                            </div>
+                          )}
+                          {showUploadCTA && (
+                            <div className="mt-2 flex items-center justify-between rounded-lg bg-warning/10 px-3 py-2">
+                              <div className="flex items-center gap-1.5 text-xs text-warning">
+                                <span>⚠</span>
+                                <span>{clpFormatted(unbilledAmount)} sin facturar</span>
+                              </div>
+                              <Link
+                                href="/cartolas"
+                                className="flex items-center gap-1 text-xs font-semibold text-warning hover:underline"
+                              >
+                                📄 Subir cartola →
+                              </Link>
                             </div>
                           )}
                         </div>
@@ -490,9 +602,28 @@ export default function DashboardPage() {
                       <span className="text-sm font-semibold text-text-secondary">Total a pagar</span>
                       <span className="font-bold text-danger">
                         {clpFormatted(
-                          cards.reduce((s, c) =>
-                            s + (c.closing_day ? billingTotal(cardTxs, c.id, c.closing_day, sel.month, sel.year) : 0), 0
-                          )
+                          cards.reduce((s, c) => {
+                            if (!c.closing_day) return s
+                            const [, periodEnd] = billingPeriod(c.closing_day, sel.month, sel.year)
+                            const periodEndStr = periodEnd.toISOString().split('T')[0]
+
+                            const upload = cartolaUploads.find(u =>
+                              u.credit_card_id === c.id && u.period_end === periodEndStr
+                            )
+                            if (upload) return s + upload.total_amount
+
+                            const latestWithUpcoming = cartolaUploads
+                              .filter(u => u.credit_card_id === c.id && u.upcoming_amounts)
+                              .sort((a, b) => b.period_end.localeCompare(a.period_end))[0]
+
+                            const upcoming = latestWithUpcoming?.upcoming_amounts?.find(up => {
+                              const d = new Date(up.dueDate)
+                              return d.getMonth() === periodEnd.getMonth() && d.getFullYear() === periodEnd.getFullYear()
+                            })
+                            if (upcoming) return s + upcoming.amount
+
+                            return s + billingTotal(cardTxs, c.id, c.closing_day, sel.month, sel.year)
+                          }, 0)
                         )}
                       </span>
                     </div>
@@ -528,6 +659,26 @@ function billingTotal(
   return txs
     .filter(tx => {
       if (tx.credit_card_id !== cardId) return false
+      const d = new Date(tx.date)
+      return d >= start && d <= end
+    })
+    .reduce((s, tx) => s + Number(tx.amount), 0)
+}
+
+// Only counts manual, unmatched transactions — used for "sin facturar" calculation
+function billingTotalUnbilled(
+  txs: { credit_card_id: string; amount: number; date: string; is_from_cartola?: boolean; match_status?: string }[],
+  cardId: string,
+  closingDay: number,
+  month: number,
+  year: number
+): number {
+  const [start, end] = billingPeriod(closingDay, month, year)
+  return txs
+    .filter(tx => {
+      if (tx.credit_card_id !== cardId) return false
+      if (tx.is_from_cartola) return false
+      if (tx.match_status === 'matched') return false
       const d = new Date(tx.date)
       return d >= start && d <= end
     })

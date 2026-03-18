@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { getClient } from '@/lib/supabase'
 import AppShell from '@/components/AppShell'
 import { clpFormatted } from '@/lib/utils'
@@ -12,6 +13,7 @@ const CATEGORIES = [
 ]
 
 export default function TransactionsPage() {
+  const searchParams = useSearchParams()
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [cards, setCards]               = useState<CreditCard[]>([])
   const [loading, setLoading]           = useState(true)
@@ -21,6 +23,11 @@ export default function TransactionsPage() {
   const [deleting, setDeleting]         = useState<string | null>(null)
   const [editing, setEditing]           = useState<Transaction | null>(null)
   const [showAdd, setShowAdd]           = useState(false)
+
+  // Auto-open add modal when coming from sidebar "Nueva transacción" button
+  useEffect(() => {
+    if (searchParams.get('new') === '1') setShowAdd(true)
+  }, [searchParams])
 
   const load = useCallback(async () => {
     const sb = getClient()

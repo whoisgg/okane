@@ -51,6 +51,34 @@ export function parseFalabella(text: string, lastFour: string): CartolaParseResu
     })
   }
 
+  // ── "Vencimiento Próximos 4 meses" table ────────────────────────────────────
+  // The table has a header row with dates and a value row with amounts.
+  // PDF text extraction typically produces something like:
+  //   "Vencimiento Próximos 4 meses\nActual 30/04/2026 30/05/2026 ...\n800.220 249.588 ..."
+  // We extract the 4 future dates and their corresponding amounts.
+  const upcomingPayments: { dueDate: string; amount: number }[] = []
+  const vencIdx = text.search(/Vencimiento Pr[oó]ximos/i)
+  if (vencIdx !== -1) {
+    const section = text.slice(vencIdx, vencIdx + 600)
+
+    // Extract future dates (DD/MM/YYYY) — skip "Actual" label
+    const futureDates = [...section.matchAll(/(\d{2}\/\d{2}\/\d{4})/g)].map(m => m[1])
+
+    // Extract all numbers formatted as chilean amounts (digits with dots as thousands sep)
+    // Match sequences like "800.220" or "249.588" — handles both space-separated and newline-separated
+    const amounts = [...section.matchAll(/(?:^|[\s\t])(\d{1,3}(?:\.\d{3})+)(?=$|[\s\t\n])/gm)].map(m => parseAmount(m[1]))
+
+    // The first amount is "Actual" (current period = totalAmount), rest are future
+    // Match each future date with its amount (offset by 1 to skip Actual)
+    futureDates.forEach((dateStr, i) => {
+      const amt = amounts[i + 1]  // +1 to skip Actual amount
+      if (amt == null || amt <= 0) return
+      const d = parseDate(dateStr)
+      if (!d) return
+      upcomingPayments.push({ dueDate: d.toISOString().split('T')[0], amount: amt })
+    })
+  }
+
   return {
     bank: 'falabella',
     cardLastFour: lastFour,
@@ -58,5 +86,6 @@ export function parseFalabella(text: string, lastFour: string): CartolaParseResu
     periodEnd,
     totalAmount,
     transactions: transactions.filter(t => !t.isPayment),
+    upcomingPayments: upcomingPayments.length > 0 ? upcomingPayments : undefined,
   }
 }

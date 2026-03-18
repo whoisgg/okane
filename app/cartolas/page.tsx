@@ -26,6 +26,20 @@ const BANKS: { id: BankType; label: string; color: string; icon: string; descrip
 
 type Step = 'select-bank' | 'upload' | 'preview' | 'matching' | 'done'
 
+interface UploadHistory {
+  id: string
+  status: string
+  period_start: string | null
+  period_end: string | null
+  total_amount: number
+  transaction_count: number
+  matched_count: number
+  created_at: string
+  credit_card_id: string
+  card_name?: string
+  bank_name?: string
+}
+
 interface MatchPair {
   id: string
   manual: any
@@ -48,12 +62,49 @@ export default function CartolasPage() {
   const [confirmedPairs, setConfirmedPairs] = useState<Set<string>>(new Set())
   const [uploadId, setUploadId]             = useState<string | null>(null)
   const [dupWarning, setDupWarning]         = useState<{ periodStart: string; periodEnd: string; uploadedAt: string } | null>(null)
+  const [history, setHistory]               = useState<UploadHistory[]>([])
+  const [deletingId, setDeletingId]         = useState<string | null>(null)
+
+  async function loadCards() {
+    const sb = getClient()
+    const { data } = await sb.from('credit_cards').select('*').order('created_at')
+    setCards((data ?? []) as CreditCard[])
+  }
+
+  async function loadHistory() {
+    const sb = getClient()
+    const { data } = await sb
+      .from('cartola_uploads')
+      .select('id,status,period_start,period_end,total_amount,transaction_count,matched_count,created_at,credit_card_id,bank_name')
+      .order('created_at', { ascending: false })
+      .limit(20)
+    if (!data) return
+    // Attach card names
+    const cardsMap: Record<string, string> = {}
+    cards.forEach(c => { cardsMap[c.id] = c.name })
+    setHistory(data.map(u => ({ ...u, card_name: cardsMap[u.credit_card_id] })))
+  }
+
+  async function deleteUpload(uploadId: string) {
+    setDeletingId(uploadId)
+    const sb = getClient()
+    // Delete imported transactions first
+    await sb.from('transactions').delete()
+      .eq('cartola_upload_id', uploadId)
+      .eq('is_from_cartola', true)
+    // Delete the upload record
+    await sb.from('cartola_uploads').delete().eq('id', uploadId)
+    await loadHistory()
+    setDeletingId(null)
+  }
 
   useEffect(() => {
-    getClient().from('credit_cards').select('*').order('created_at').then(({ data }) => {
-      setCards((data ?? []) as CreditCard[])
-    })
+    loadCards()
   }, [])
+
+  useEffect(() => {
+    if (cards.length > 0) loadHistory()
+  }, [cards])
 
   // Cards filtered to the selected bank
   const bankCards = selectedBank
@@ -142,6 +193,7 @@ export default function CartolasPage() {
         matched_count: 0,
         status: 'revisando',
         currency: 'CLP',
+        upcoming_amounts: parsed.upcomingPayments ?? null,
       }
       const { data: uploadData, error: uploadErr } = await sb
         .from('cartola_uploads').insert(uploadBody).select('id').single()
@@ -223,7 +275,14 @@ export default function CartolasPage() {
       }
 
       await sb.from('cartola_uploads').update({ status: 'procesada', matched_count: confirmed.length }).eq('id', uploadId)
+
+      // Update card balance with the cartola total (Monto Total Facturado a Pagar)
+      if (parsed.totalAmount > 0) {
+        await sb.from('credit_cards').update({ balance: parsed.totalAmount }).eq('id', selectedCard)
+      }
+
       setStep('done')
+      loadHistory()
     } catch (e: any) {
       setError(e.message)
     }
@@ -252,25 +311,75 @@ export default function CartolasPage() {
 
         {/* ── 0. Select bank ── */}
         {step === 'select-bank' && (
-          <div className="space-y-3">
-            <p className="text-sm text-text-secondary">Selecciona el banco del estado de cuenta que vas a subir</p>
-            <div className="grid grid-cols-2 gap-3">
-              {BANKS.map(bank => (
-                <button
-                  key={bank.id}
-                  onClick={() => selectBank(bank.id)}
-                  className={`relative overflow-hidden rounded-2xl bg-gradient-to-br ${bank.color} p-5 text-left text-white shadow-md transition hover:scale-[1.02] active:scale-[0.98]`}
-                >
-                  <div className="absolute inset-0 bg-gradient-to-b from-white/10 to-transparent pointer-events-none" />
-                  <span className="text-3xl">{bank.icon}</span>
-                  <p className="mt-2 text-base font-bold">{bank.label}</p>
-                  <p className="mt-0.5 text-[11px] opacity-70">{bank.description}</p>
-                  <div className="mt-3 flex items-center gap-1 text-[11px] font-semibold opacity-80">
-                    Seleccionar <span>→</span>
-                  </div>
-                </button>
-              ))}
+          <div className="space-y-5">
+            <div className="space-y-3">
+              <p className="text-sm text-text-secondary">Selecciona el banco del estado de cuenta que vas a subir</p>
+              <div className="grid grid-cols-2 gap-3">
+                {BANKS.map(bank => (
+                  <button
+                    key={bank.id}
+                    onClick={() => selectBank(bank.id)}
+                    className={`relative overflow-hidden rounded-2xl bg-gradient-to-br ${bank.color} p-5 text-left text-white shadow-md transition hover:scale-[1.02] active:scale-[0.98]`}
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-b from-white/10 to-transparent pointer-events-none" />
+                    <span className="text-3xl">{bank.icon}</span>
+                    <p className="mt-2 text-base font-bold">{bank.label}</p>
+                    <p className="mt-0.5 text-[11px] opacity-70">{bank.description}</p>
+                    <div className="mt-3 flex items-center gap-1 text-[11px] font-semibold opacity-80">
+                      Seleccionar <span>→</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
             </div>
+
+            {/* ── History ── */}
+            {history.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm font-semibold text-text-primary">Historial de cartolas</p>
+                <div className="card divide-y divide-border overflow-hidden">
+                  {history.map(upload => {
+                    const bankLabel = BANKS.find(b => b.id === upload.bank_name)?.label ?? upload.bank_name ?? '—'
+                    const periodStr = upload.period_start && upload.period_end
+                      ? `${upload.period_start} → ${upload.period_end}`
+                      : '—'
+                    const isDeleting = deletingId === upload.id
+                    return (
+                      <div key={upload.id} className="flex items-center gap-3 px-4 py-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-semibold text-text-primary truncate">
+                              {upload.card_name ?? bankLabel}
+                            </span>
+                            <span className={`badge text-[10px] ${upload.status === 'procesada' ? 'bg-success/10 text-success' : 'bg-warning/10 text-warning'}`}>
+                              {upload.status}
+                            </span>
+                          </div>
+                          <p className="text-xs text-text-muted">{periodStr}</p>
+                          <p className="text-xs text-text-muted">
+                            {clpFormatted(Number(upload.total_amount))} · {upload.transaction_count ?? 0} mov
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => deleteUpload(upload.id)}
+                          disabled={isDeleting}
+                          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full text-text-muted hover:bg-danger/10 hover:text-danger transition disabled:opacity-40"
+                          title="Eliminar cartola"
+                        >
+                          {isDeleting ? (
+                            <span className="h-3.5 w-3.5 animate-spin rounded-full border border-danger border-t-transparent block" />
+                          ) : (
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
+                              <path fillRule="evenodd" d="M8.75 1A2.75 2.75 0 006 3.75v.443c-.795.077-1.584.176-2.365.298a.75.75 0 10.23 1.482l.149-.022.841 10.518A2.75 2.75 0 007.596 19h4.807a2.75 2.75 0 002.742-2.53l.841-10.52.149.023a.75.75 0 00.23-1.482A41.03 41.03 0 0014 4.193V3.75A2.75 2.75 0 0011.25 1h-2.5zM10 4c.84 0 1.673.025 2.5.075V3.75c0-.69-.56-1.25-1.25-1.25h-2.5c-.69 0-1.25.56-1.25 1.25v.325C8.327 4.025 9.16 4 10 4zM8.58 7.72a.75.75 0 00-1.5.06l.3 7.5a.75.75 0 101.5-.06l-.3-7.5zm4.34.06a.75.75 0 10-1.5-.06l-.3 7.5a.75.75 0 101.5.06l.3-7.5z" clipRule="evenodd" />
+                            </svg>
+                          )}
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )}
 

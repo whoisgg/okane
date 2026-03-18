@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { getClient } from '@/lib/supabase'
+import { useState } from 'react'
 
 const NAV = [
   { href: "/inicio",           label: "Inicio",          icon: HomeIcon },
@@ -31,6 +32,17 @@ export default function Sidebar() {
       <div className="flex h-16 items-center gap-2 border-b border-border px-5">
         <span className="text-xl font-bold text-accent">お</span>
         <span className="text-lg font-bold text-text-primary">Okane</span>
+      </div>
+
+      {/* Quick add button */}
+      <div className="px-3 py-2 border-b border-border">
+        <Link
+          href="/transactions?new=1"
+          className="flex w-full items-center justify-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-accent/90 active:scale-[0.98] transition-all"
+        >
+          <span className="text-base leading-none">+</span>
+          Nueva transacción
+        </Link>
       </div>
 
       {/* Nav */}

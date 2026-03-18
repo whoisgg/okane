@@ -131,4 +131,5 @@ export interface CartolaParseResult {
   periodEnd?: Date
   totalAmount: number
   transactions: CartolaTransaction[]
+  upcomingPayments?: { dueDate: string; amount: number }[]  // From "Vencimiento Próximos 4 meses"
 }
