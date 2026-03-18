@@ -6,7 +6,7 @@ import { getClient } from '@/lib/supabase'
 
 const NAV = [
   { href: "/inicio",           label: "Inicio",          icon: HomeIcon },
-  { href: '/dashboard',        label: 'Flujo de Caja',   icon: BarChartIcon },
+  { href: '/dashboard',        label: 'Flujo',            icon: BarChartIcon },
   { href: '/saldos',           label: 'Saldos',           icon: CreditCardIcon },
   { href: '/creditos-lista',   label: 'Créditos',         icon: LoanIcon },
   { href: '/suscripciones',    label: 'Suscripciones',    icon: RepeatIcon },

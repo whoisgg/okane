@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import Link from 'next/link'
 import { getClient } from '@/lib/supabase'
 import AppShell from '@/components/AppShell'
 import { clpFormatted } from '@/lib/utils'
@@ -73,7 +74,14 @@ export default function CreditosPage() {
 
         {/* Header */}
         <div className="flex items-center justify-between">
-          <h1 className="text-xl font-bold text-text-primary">Créditos</h1>
+          <div className="flex items-center gap-2">
+            <Link href="/dashboard" className="text-text-secondary hover:text-text-primary transition-colors">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M19 12H5M12 5l-7 7 7 7"/>
+              </svg>
+            </Link>
+            <h1 className="text-xl font-bold text-text-primary">Créditos</h1>
+          </div>
           <button onClick={() => { setShowForm(true); setError(null) }} className="btn-primary text-xs px-3 py-1.5">
             + Nuevo crédito
           </button>
