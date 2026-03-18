@@ -92,10 +92,19 @@ export interface Loan {
   created_at: string
 }
 
+export interface CategoryBudget {
+  id: string
+  user_id: string
+  category: string
+  monthly_limit: number
+  created_at: string
+}
+
 export interface UserSettings {
   id: string
   user_id: string
   monthly_budget: number
+  savings_goal: number
   created_at: string
 }
 

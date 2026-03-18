@@ -4,17 +4,37 @@ import { useEffect, useState } from 'react'
 import { getClient } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
 import AppShell from '@/components/AppShell'
-import type { CreditCard, BankAccount } from '@/lib/types'
+import type { CreditCard, BankAccount, CategoryBudget } from '@/lib/types'
 import { clpFormatted } from '@/lib/utils'
 import Link from 'next/link'
 
+function fmt(n: number) {
+  return n > 0 ? n.toLocaleString('es-CL') : ''
+}
+function parse(v: string) {
+  return parseInt(v.replace(/\D/g, '') || '0', 10)
+}
+
 export default function ConfigPage() {
   const router = useRouter()
-  const [cards, setCards]     = useState<CreditCard[]>([])
-  const [accounts, setAccounts] = useState<BankAccount[]>([])
-  const [email, setEmail]     = useState('')
-  const [loading, setLoading] = useState(true)
+  const [cards, setCards]         = useState<CreditCard[]>([])
+  const [accounts, setAccounts]   = useState<BankAccount[]>([])
+  const [email, setEmail]         = useState('')
+  const [loading, setLoading]     = useState(true)
   const [signingOut, setSigningOut] = useState(false)
+
+  // Budget settings
+  const [budget, setBudget]         = useState('')
+  const [savingsGoal, setSavingsGoal] = useState('')
+  const [savingSettings, setSavingSettings] = useState(false)
+  const [settingsSaved, setSettingsSaved]   = useState(false)
+
+  // Category budgets
+  const CATEGORIES = ['hogar','comida','salud','transporte','entretenimiento','ropa','educacion','tecnologia','viajes','otros']
+  const CAT_LABEL: Record<string,string> = { hogar:'Hogar', comida:'Comida', salud:'Salud', transporte:'Transporte', entretenimiento:'Entretención', ropa:'Ropa', educacion:'Educación', tecnologia:'Tecnología', viajes:'Viajes', otros:'Otros' }
+  const [catLimits, setCatLimits]   = useState<Record<string,string>>({})
+  const [savingCats, setSavingCats] = useState(false)
+  const [catsSaved, setCatsSaved]   = useState(false)
 
   useEffect(() => {
     const sb = getClient()
@@ -22,13 +42,66 @@ export default function ConfigPage() {
       sb.auth.getUser(),
       sb.from('credit_cards').select('*').order('created_at'),
       sb.from('bank_accounts').select('*').order('created_at'),
-    ]).then(([{ data: { user } }, cardsRes, accsRes]) => {
+      sb.from('settings').select('*').single(),
+      sb.from('category_budgets').select('*'),
+    ]).then(([{ data: { user } }, cardsRes, accsRes, settRes, catRes]) => {
       setEmail(user?.email ?? '')
       setCards((cardsRes.data ?? []) as CreditCard[])
       setAccounts((accsRes.data ?? []) as BankAccount[])
+      if (settRes.data) {
+        setBudget(fmt(settRes.data.monthly_budget))
+        setSavingsGoal(fmt(settRes.data.savings_goal ?? 0))
+      }
+      // Build catLimits map from DB
+      const map: Record<string,string> = {}
+      ;(catRes.data ?? []).forEach((b: CategoryBudget) => {
+        if (b.monthly_limit > 0) map[b.category] = fmt(b.monthly_limit)
+      })
+      setCatLimits(map)
       setLoading(false)
     })
   }, [])
+
+  async function saveCategoryBudgets(e: React.FormEvent) {
+    e.preventDefault()
+    setSavingCats(true)
+    const sb = getClient()
+    const { data: { user } } = await sb.auth.getUser()
+    if (!user) return
+    // Upsert all categories that have a value
+    const rows = CATEGORIES
+      .filter(c => catLimits[c] && parse(catLimits[c]) > 0)
+      .map(c => ({ user_id: user.id, category: c, monthly_limit: parse(catLimits[c]) }))
+    // Delete removed ones
+    const removed = CATEGORIES.filter(c => !catLimits[c] || parse(catLimits[c]) === 0)
+    await Promise.all([
+      rows.length > 0
+        ? sb.from('category_budgets').upsert(rows, { onConflict: 'user_id,category' })
+        : Promise.resolve(),
+      removed.length > 0
+        ? sb.from('category_budgets').delete().eq('user_id', user.id).in('category', removed)
+        : Promise.resolve(),
+    ])
+    setSavingCats(false)
+    setCatsSaved(true)
+    setTimeout(() => setCatsSaved(false), 2000)
+  }
+
+  async function saveSettings(e: React.FormEvent) {
+    e.preventDefault()
+    setSavingSettings(true)
+    const sb = getClient()
+    const { data: { user } } = await sb.auth.getUser()
+    if (!user) return
+    await sb.from('settings').upsert({
+      user_id: user.id,
+      monthly_budget: parse(budget),
+      savings_goal: parse(savingsGoal),
+    }, { onConflict: 'user_id' })
+    setSavingSettings(false)
+    setSettingsSaved(true)
+    setTimeout(() => setSettingsSaved(false), 2000)
+  }
 
   async function signOut() {
     setSigningOut(true)
@@ -62,6 +135,83 @@ export default function ConfigPage() {
               <p className="text-xs text-text-muted">Cuenta activa</p>
             </div>
           </div>
+        </section>
+
+        {/* Budget & savings */}
+        <section>
+          <p className="mb-2 text-xs font-bold uppercase tracking-wider text-text-muted">Presupuesto y ahorro</p>
+          <form onSubmit={saveSettings} className="card divide-y divide-border overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3">
+              <label className="text-sm text-text-primary">Presupuesto mensual</label>
+              <div className="flex items-center gap-1">
+                <span className="text-xs text-text-muted">$</span>
+                <input
+                  className="w-32 rounded-lg bg-surface-high px-2 py-1 text-right text-sm font-semibold text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+                  placeholder="0"
+                  value={budget}
+                  onChange={e => {
+                    const raw = e.target.value.replace(/\D/g, '')
+                    setBudget(raw ? Number(raw).toLocaleString('es-CL') : '')
+                  }}
+                />
+              </div>
+            </div>
+            <div className="flex items-center justify-between px-4 py-3">
+              <div>
+                <label className="text-sm text-text-primary">Meta de ahorro mensual</label>
+                <p className="text-xs text-text-muted">¿Cuánto querés guardar cada mes?</p>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="text-xs text-text-muted">$</span>
+                <input
+                  className="w-32 rounded-lg bg-surface-high px-2 py-1 text-right text-sm font-semibold text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+                  placeholder="0"
+                  value={savingsGoal}
+                  onChange={e => {
+                    const raw = e.target.value.replace(/\D/g, '')
+                    setSavingsGoal(raw ? Number(raw).toLocaleString('es-CL') : '')
+                  }}
+                />
+              </div>
+            </div>
+            <div className="px-4 py-3">
+              <button type="submit" disabled={savingSettings} className="btn-primary w-full justify-center text-sm">
+                {savingSettings ? 'Guardando...' : settingsSaved ? '✓ Guardado' : 'Guardar cambios'}
+              </button>
+            </div>
+          </form>
+        </section>
+
+        {/* Category budgets */}
+        <section id="metas">
+          <div className="mb-2">
+            <p className="text-xs font-bold uppercase tracking-wider text-text-muted">Metas por categoría</p>
+            <p className="text-xs text-text-muted mt-0.5">Límite de gasto mensual por categoría. Dejá en blanco para sin límite.</p>
+          </div>
+          <form onSubmit={saveCategoryBudgets} className="card divide-y divide-border overflow-hidden">
+            {CATEGORIES.map(cat => (
+              <div key={cat} className="flex items-center justify-between px-4 py-2.5">
+                <label className="text-sm text-text-primary">{CAT_LABEL[cat]}</label>
+                <div className="flex items-center gap-1">
+                  <span className="text-xs text-text-muted">$</span>
+                  <input
+                    className="w-32 rounded-lg bg-surface-high px-2 py-1 text-right text-sm font-semibold text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+                    placeholder="Sin límite"
+                    value={catLimits[cat] ?? ''}
+                    onChange={e => {
+                      const raw = e.target.value.replace(/\D/g, '')
+                      setCatLimits(prev => ({ ...prev, [cat]: raw ? Number(raw).toLocaleString('es-CL') : '' }))
+                    }}
+                  />
+                </div>
+              </div>
+            ))}
+            <div className="px-4 py-3">
+              <button type="submit" disabled={savingCats} className="btn-primary w-full justify-center text-sm">
+                {savingCats ? 'Guardando...' : catsSaved ? '✓ Guardado' : 'Guardar metas'}
+              </button>
+            </div>
+          </form>
         </section>
 
         {/* Credit cards */}

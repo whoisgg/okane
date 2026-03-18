@@ -4,146 +4,119 @@ import { useEffect, useState, useCallback } from 'react'
 import { getClient } from '@/lib/supabase'
 import AppShell from '@/components/AppShell'
 import { clpFormatted, clpAbbreviated } from '@/lib/utils'
-import type { Transaction, UserSettings } from '@/lib/types'
+import type { Transaction, UserSettings, CategoryBudget } from '@/lib/types'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 
-// ── Category config ────────────────────────────────────────────────────────────
+// ── Canonical category labels (aligned with transaction modal + config) ────────
 const CAT_LABEL: Record<string, string> = {
-  food: 'Alimentación',          comida: 'Alimentación',        supermercado: 'Supermercado',
-  alimentacion: 'Alimentación',  alimentación: 'Alimentación',
-  restaurants: 'Restaurantes',   restaurantes: 'Restaurantes',  restaurant: 'Restaurantes',
-  transport: 'Transporte',       transporte: 'Transporte',      taxi: 'Transporte',  uber: 'Transporte',
-  entertainment: 'Entretención', entretencion: 'Entretención',  entretención: 'Entretención', ocio: 'Entretención',
-  health: 'Salud',               salud: 'Salud',                farmacia: 'Farmacia',
-  shopping: 'Compras',           compras: 'Compras',            ropa: 'Ropa',        vestuario: 'Vestuario',
-  utilities: 'Hogar',            hogar: 'Hogar',                servicios: 'Servicios',
-  education: 'Educación',        educacion: 'Educación',        educación: 'Educación',
-  travel: 'Viajes',              viajes: 'Viajes',              viaje: 'Viajes',
-  subscriptions: 'Suscripciones',suscripciones: 'Suscripciones',suscripcion: 'Suscripciones', suscripción: 'Suscripciones',
-  savings: 'Ahorro',             ahorro: 'Ahorro',
-  technology: 'Tecnología',      tecnologia: 'Tecnología',      tecnología: 'Tecnología',
-  otros: 'Otros',                other: 'Otros',                otro: 'Otros',
+  hogar:          'Hogar',
+  comida:         'Comida',
+  salud:          'Salud',
+  transporte:     'Transporte',
+  entretenimiento:'Entretención',
+  ropa:           'Ropa',
+  educacion:      'Educación',
+  tecnologia:     'Tecnología',
+  viajes:         'Viajes',
+  otros:          'Otros',
 }
 
-function catLabel(c: string) { return CAT_LABEL[c] ?? c }
+function catLabel(c: string) { return CAT_LABEL[c] ?? c.charAt(0).toUpperCase() + c.slice(1) }
 
-// ── Inline SVG category icons ─────────────────────────────────────────────────
+// ── Normalize any legacy/iOS category key → canonical new key ─────────────────
+const CAT_NORMALIZE: Record<string, string> = {
+  // comida
+  food: 'comida', alimentacion: 'comida', alimentación: 'comida',
+  supermercado: 'comida', restaurants: 'comida', restaurantes: 'comida', restaurant: 'comida',
+  // transporte
+  transport: 'transporte', taxi: 'transporte', uber: 'transporte',
+  // entretenimiento
+  entertainment: 'entretenimiento', entretencion: 'entretenimiento',
+  entretención: 'entretenimiento', ocio: 'entretenimiento',
+  // salud
+  health: 'salud', farmacia: 'salud',
+  // hogar
+  utilities: 'hogar', servicios: 'hogar',
+  // ropa
+  shopping: 'ropa', compras: 'ropa', vestuario: 'ropa',
+  // educacion
+  education: 'educacion', educación: 'educacion',
+  // tecnologia
+  technology: 'tecnologia', tecnología: 'tecnologia',
+  // viajes
+  travel: 'viajes', viaje: 'viajes',
+  // otros
+  other: 'otros', otro: 'otros',
+  savings: 'otros', ahorro: 'otros',
+  subscriptions: 'otros', suscripciones: 'otros',
+  suscripcion: 'otros', suscripción: 'otros',
+}
+function normalizeCat(c: string): string {
+  return CAT_NORMALIZE[c.toLowerCase()] ?? c.toLowerCase()
+}
+
+// ── Inline SVG category icons (canonical keys only — input always pre-normalized) ──
 function CatIcon({ cat, className = 'h-5 w-5' }: { cat: string; className?: string }) {
-  const k = cat.toLowerCase()
+  const k = normalizeCat(cat)
   const s = { stroke: 'currentColor', fill: 'none', strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const }
 
-  // Alimentación / supermercado → shopping cart
-  if (['food','comida','supermercado','alimentacion','alimentación'].includes(k))
-    return (
-      <svg className={className} viewBox="0 0 24 24" {...s}>
-        <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/>
-        <line x1="3" y1="6" x2="21" y2="6"/>
-        <path d="M16 10a4 4 0 01-8 0"/>
-      </svg>
-    )
-
-  // Restaurantes → utensils
-  if (['restaurants','restaurantes','restaurant'].includes(k))
-    return (
-      <svg className={className} viewBox="0 0 24 24" {...s}>
-        <path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 002-2V2"/>
-        <path d="M7 2v20M21 15V2a5 5 0 00-5 5v6c0 1.1.9 2 2 2h3zm0 0v7"/>
-      </svg>
-    )
-
-  // Transporte → car
-  if (['transport','transporte','taxi','uber'].includes(k))
-    return (
-      <svg className={className} viewBox="0 0 24 24" {...s}>
-        <path d="M5 17H3a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v9a2 2 0 01-2 2h-2"/>
-        <circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/>
-        <path d="M13 3v5h5"/>
-      </svg>
-    )
-
-  // Entretención → gamepad / play circle
-  if (['entertainment','entretencion','entretención','ocio'].includes(k))
-    return (
-      <svg className={className} viewBox="0 0 24 24" {...s}>
-        <circle cx="12" cy="12" r="10"/>
-        <polygon points="10 8 16 12 10 16 10 8"/>
-      </svg>
-    )
-
-  // Salud / farmacia → cross
-  if (['health','salud','farmacia'].includes(k))
-    return (
-      <svg className={className} viewBox="0 0 24 24" {...s}>
-        <path d="M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/>
-        <path d="M12 8v8M8 12h8"/>
-      </svg>
-    )
-
-  // Compras / ropa → shopping bag
-  if (['shopping','compras','ropa','vestuario'].includes(k))
-    return (
-      <svg className={className} viewBox="0 0 24 24" {...s}>
-        <path d="M6 2h12l2 20H4L6 2z"/>
-        <path d="M9 8a3 3 0 006 0"/>
-      </svg>
-    )
-
-  // Hogar / servicios → house
-  if (['utilities','hogar','servicios'].includes(k))
-    return (
-      <svg className={className} viewBox="0 0 24 24" {...s}>
-        <path d="M3 12L12 3l9 9"/>
-        <path d="M9 21V12h6v9M3 12v9h18v-9"/>
-      </svg>
-    )
-
-  // Educación → book open
-  if (['education','educacion','educación'].includes(k))
-    return (
-      <svg className={className} viewBox="0 0 24 24" {...s}>
-        <path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/>
-        <path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/>
-      </svg>
-    )
-
-  // Viajes → airplane
-  if (['travel','viajes','viaje'].includes(k))
-    return (
-      <svg className={className} viewBox="0 0 24 24" {...s}>
-        <path d="M17.8 19.2L16 11l3.5-3.5C21 6 21 4 19 4s-2 1-3.5 2.5L11 10 2.8 8.2 2 9l7 3.7-2 3.6-3-.4L3 17l3.5 1 1 3.5 1.5-1-.4-3 3.6-2L16 22l.8-.8z"/>
-      </svg>
-    )
-
-  // Suscripciones → smartphone
-  if (['subscriptions','suscripciones','suscripcion','suscripción'].includes(k))
-    return (
-      <svg className={className} viewBox="0 0 24 24" {...s}>
-        <rect x="5" y="2" width="14" height="20" rx="2"/>
-        <line x1="12" y1="18" x2="12.01" y2="18" strokeWidth={2.5}/>
-      </svg>
-    )
-
-  // Ahorro → coin stack
-  if (['savings','ahorro'].includes(k))
-    return (
-      <svg className={className} viewBox="0 0 24 24" {...s}>
-        <ellipse cx="12" cy="6" rx="8" ry="3"/>
-        <path d="M4 6v4c0 1.657 3.582 3 8 3s8-1.343 8-3V6"/>
-        <path d="M4 10v4c0 1.657 3.582 3 8 3s8-1.343 8-3v-4"/>
-      </svg>
-    )
-
-  // Tecnología → laptop / monitor
-  if (['technology','tecnologia','tecnología'].includes(k))
-    return (
-      <svg className={className} viewBox="0 0 24 24" {...s}>
-        <rect x="2" y="3" width="20" height="14" rx="2"/>
-        <path d="M8 21h8M12 17v4"/>
-      </svg>
-    )
-
-  // Fallback → grid dots
+  if (k === 'comida') return (
+    <svg className={className} viewBox="0 0 24 24" {...s}>
+      <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/>
+      <line x1="3" y1="6" x2="21" y2="6"/>
+      <path d="M16 10a4 4 0 01-8 0"/>
+    </svg>
+  )
+  if (k === 'transporte') return (
+    <svg className={className} viewBox="0 0 24 24" {...s}>
+      <path d="M5 17H3a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v9a2 2 0 01-2 2h-2"/>
+      <circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/>
+      <path d="M13 3v5h5"/>
+    </svg>
+  )
+  if (k === 'entretenimiento') return (
+    <svg className={className} viewBox="0 0 24 24" {...s}>
+      <circle cx="12" cy="12" r="10"/>
+      <polygon points="10 8 16 12 10 16 10 8"/>
+    </svg>
+  )
+  if (k === 'salud') return (
+    <svg className={className} viewBox="0 0 24 24" {...s}>
+      <path d="M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/>
+      <path d="M12 8v8M8 12h8"/>
+    </svg>
+  )
+  if (k === 'ropa') return (
+    <svg className={className} viewBox="0 0 24 24" {...s}>
+      <path d="M6 2h12l2 20H4L6 2z"/>
+      <path d="M9 8a3 3 0 006 0"/>
+    </svg>
+  )
+  if (k === 'hogar') return (
+    <svg className={className} viewBox="0 0 24 24" {...s}>
+      <path d="M3 12L12 3l9 9"/>
+      <path d="M9 21V12h6v9M3 12v9h18v-9"/>
+    </svg>
+  )
+  if (k === 'educacion') return (
+    <svg className={className} viewBox="0 0 24 24" {...s}>
+      <path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/>
+      <path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/>
+    </svg>
+  )
+  if (k === 'viajes') return (
+    <svg className={className} viewBox="0 0 24 24" {...s}>
+      <path d="M17.8 19.2L16 11l3.5-3.5C21 6 21 4 19 4s-2 1-3.5 2.5L11 10 2.8 8.2 2 9l7 3.7-2 3.6-3-.4L3 17l3.5 1 1 3.5 1.5-1-.4-3 3.6-2L16 22l.8-.8z"/>
+    </svg>
+  )
+  if (k === 'tecnologia') return (
+    <svg className={className} viewBox="0 0 24 24" {...s}>
+      <rect x="2" y="3" width="20" height="14" rx="2"/>
+      <path d="M8 21h8M12 17v4"/>
+    </svg>
+  )
+  // otros / fallback → grid dots
   return (
     <svg className={className} viewBox="0 0 24 24" {...s}>
       <circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="19" cy="12" r="1" fill="currentColor"/><circle cx="5" cy="12" r="1" fill="currentColor"/>
@@ -153,10 +126,11 @@ function CatIcon({ cat, className = 'h-5 w-5' }: { cat: string; className?: stri
 
 export default function InicioPage() {
   const router = useRouter()
-  const [txs, setTxs]         = useState<Transaction[]>([])
-  const [settings, setSettings] = useState<UserSettings | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [email, setEmail]     = useState('')
+  const [txs, setTxs]               = useState<Transaction[]>([])
+  const [settings, setSettings]     = useState<UserSettings | null>(null)
+  const [catBudgets, setCatBudgets] = useState<CategoryBudget[]>([])
+  const [loading, setLoading]       = useState(true)
+  const [email, setEmail]           = useState('')
 
   // Month navigation
   const now = new Date()
@@ -173,7 +147,7 @@ export default function InicioPage() {
     const nextMonth  = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 1)
     const monthEnd   = new Date(nextMonth.getTime() - 86400000).toISOString().split('T')[0]
 
-    const [{ data: userData }, txRes, settingsRes] = await Promise.all([
+    const [{ data: userData }, txRes, settingsRes, catBudgetsRes] = await Promise.all([
       sb.auth.getUser(),
       sb.from('transactions')
         .select('*')
@@ -182,10 +156,12 @@ export default function InicioPage() {
         .lte('date', monthEnd)
         .order('date', { ascending: false }),
       sb.from('settings').select('*').single(),
+      sb.from('category_budgets').select('*'),
     ])
 
     setEmail(userData?.user?.email?.split('@')[0] ?? '')
     setTxs((txRes.data ?? []) as Transaction[])
+    setCatBudgets((catBudgetsRes.data ?? []) as CategoryBudget[])
     const s = settingsRes.data as UserSettings | null
     setSettings(s)
 
@@ -203,13 +179,17 @@ export default function InicioPage() {
   // Budget calculations
   const totalSpent  = txs.reduce((s, t) => s + Number(t.amount), 0)
   const budget      = Number(settings?.monthly_budget ?? 0)
+  const savingsGoal = Number(settings?.savings_goal ?? 0)
   const disponible  = budget > 0 ? budget - totalSpent : 0
   const budgetPct   = budget > 0 ? Math.min(100, (totalSpent / budget) * 100) : 0
+  // Ahorro = lo que queda del presupuesto (disponible), si es positivo
+  const savedSoFar  = Math.max(0, disponible)
+  const savingsPct  = savingsGoal > 0 ? Math.min(100, (savedSoFar / savingsGoal) * 100) : 0
 
-  // Categories
+  // Categories — normalize keys so legacy iOS data groups with new categories
   const catMap: Record<string, number> = {}
   for (const tx of txs) {
-    const cat = tx.category ?? 'otros'
+    const cat = normalizeCat(tx.category ?? 'otros')
     catMap[cat] = (catMap[cat] ?? 0) + Number(tx.amount)
   }
   const categories = Object.entries(catMap)
@@ -290,34 +270,78 @@ export default function InicioPage() {
           )}
         </div>
 
+        {/* ── Savings goal ── */}
+        {savingsGoal > 0 && (
+          <div className="rounded-2xl bg-surface p-5 shadow-sm border border-border space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-text-muted">meta de ahorro</p>
+              <p className="text-xs font-medium text-text-muted">{clpFormatted(savingsGoal)}</p>
+            </div>
+            <p className={`text-2xl font-bold leading-none tracking-tight ${
+              savedSoFar >= savingsGoal ? 'text-success' : 'text-text-primary'
+            }`}>
+              {clpFormatted(savedSoFar)}
+              {savedSoFar >= savingsGoal && <span className="ml-2 text-base">🎯</span>}
+            </p>
+            <div className="h-[3px] overflow-hidden rounded-full bg-border">
+              <div
+                className={`h-full rounded-full transition-all ${savedSoFar >= savingsGoal ? 'bg-success' : 'bg-accent'}`}
+                style={{ width: `${savingsPct}%` }}
+              />
+            </div>
+            <p className="text-xs text-text-muted">
+              {savingsPct >= 100
+                ? '¡Meta alcanzada este mes!'
+                : `${Math.round(savingsPct)}% de la meta · faltan ${clpFormatted(savingsGoal - savedSoFar)}`}
+            </p>
+          </div>
+        )}
+
         {/* ── Categories ── */}
         {categories.length > 0 && (
           <div>
-            <p className="mb-3 text-[11px] font-bold uppercase tracking-widest text-text-muted">Categorías</p>
+            <div className="mb-3 flex items-center justify-between">
+              <p className="text-[11px] font-bold uppercase tracking-widest text-text-muted">Categorías</p>
+              <Link href="/config#metas" className="text-[11px] text-accent">Editar metas</Link>
+            </div>
             <div className="rounded-2xl bg-surface border border-border overflow-hidden divide-y divide-border">
               {categories.map(([cat, amount]) => {
-                const pct = Math.round((amount / totalSpent) * 100)
-                const barW = Math.round((amount / maxCat) * 100)
+                const catBudget = catBudgets.find(b => b.category === normalizeCat(cat))
+                const limit     = catBudget?.monthly_limit ?? 0
+                const hasBudget = limit > 0
+                const barW      = hasBudget
+                  ? Math.min(100, Math.round((amount / limit) * 100))
+                  : Math.round((amount / maxCat) * 100)
+                const overBudget = hasBudget && amount > limit
+                const nearBudget = hasBudget && !overBudget && barW >= 80
+                const barColor   = overBudget ? 'bg-danger' : nearBudget ? 'bg-warning' : 'bg-accent'
                 return (
                   <div key={cat} className="flex items-center gap-3 px-4 py-3.5">
                     {/* Icon */}
-                    <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl bg-accent/10 text-accent">
+                    <div className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl ${overBudget ? 'bg-danger/10 text-danger' : 'bg-accent/10 text-accent'}`}>
                       <CatIcon cat={cat} />
                     </div>
                     {/* Name + bar */}
                     <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium text-text-primary">{catLabel(cat)}</p>
+                      <div className="flex items-center justify-between">
+                        <p className="text-sm font-medium text-text-primary">{catLabel(cat)}</p>
+                        {overBudget && <span className="text-[10px] font-semibold text-danger">+{clpAbbreviated(amount - limit)}</span>}
+                      </div>
                       <div className="mt-1.5 h-[3px] overflow-hidden rounded-full bg-border">
                         <div
-                          className="h-full rounded-full bg-accent transition-all"
+                          className={`h-full rounded-full transition-all ${barColor}`}
                           style={{ width: `${barW}%` }}
                         />
                       </div>
                     </div>
-                    {/* Amount + pct */}
+                    {/* Amount */}
                     <div className="flex-shrink-0 text-right">
-                      <p className="text-sm font-bold text-text-primary">{clpAbbreviated(amount)}</p>
-                      <p className="text-[10px] text-text-muted">{pct}%</p>
+                      <p className={`text-sm font-bold ${overBudget ? 'text-danger' : 'text-text-primary'}`}>
+                        {clpAbbreviated(amount)}
+                      </p>
+                      <p className="text-[10px] text-text-muted">
+                        {hasBudget ? `de ${clpAbbreviated(limit)}` : `${Math.round((amount / totalSpent) * 100)}%`}
+                      </p>
                     </div>
                   </div>
                 )
