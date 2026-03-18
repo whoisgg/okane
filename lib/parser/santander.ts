@@ -21,7 +21,8 @@ const SKIP_WORDS = [
 const INSTALL_RE = /(\d{2}\/\d{2}\/\d{2})(.+?)\s+([\d,]+)\s+%\s+\$\s*([\d.]+)\s+\$\s*([\d.]+)\s+(\d{1,2}\/\d{1,2})\s+\$([\d.,]+)/i
 
 // Single purchase: [CITY ]DATE DESCRIPTION $AMOUNT (end of line)
-const SINGLE_RE = /(\d{2}\/\d{2}\/\d{2})(?!\d)\s*([^$\n]+?)\s+\$([\d.,]+)$/
+// City prefix (e.g. "SANTIAGO", "LAS CONDES") may precede the date — skip it
+const SINGLE_RE = /(?:^[A-ZÁÉÍÓÚ\s]+\s)?(\d{2}\/\d{2}\/\d{2})(?!\d)\s*([^$\n]+?)\s+\$([\d.,]+)$/
 
 export function parseSantander(text: string, lastFour: string): CartolaParseResult {
   // ── Meta info ───────────────────────────────────────────────────────────────
@@ -31,7 +32,8 @@ export function parseSantander(text: string, lastFour: string): CartolaParseResu
   const periodStartPattern = /PER[ÍI]ODO FACTURADO\s+(\d{2}\/\d{2}\/\d{4})/i
   const periodStart = parseDate(firstMatch(periodStartPattern, text) ?? '') ?? undefined
 
-  const totalPattern = /MONTO TOTAL FACTURADO A PAGAR\s*\$?\s*([\d.]+)/i
+  // [^$\n]* prevents crossing to the next line (which has an unrelated date)
+  const totalPattern = /MONTO TOTAL FACTURADO A PAGAR[^$\n]*\$\s*([\d.]+)/i
   const totalAmount = parseAmount(firstMatch(totalPattern, text) ?? '0')
 
   // ── Process line by line ────────────────────────────────────────────────────

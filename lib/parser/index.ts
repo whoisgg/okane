@@ -18,20 +18,48 @@ export async function parsePDFFile(file: File, bankHint?: BankType): Promise<Car
   const pdfjsLib = await getPdfJs()
 
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
-  let fullText = ''
 
+  // First pass: raw item-by-item extraction (original method, used for Falabella + bank detection)
+  const pageContents: any[] = []
+  let rawText = ''
   for (let i = 1; i <= pdf.numPages; i++) {
     const page = await pdf.getPage(i)
     const content = await page.getTextContent()
-    const pageText = content.items
-      .map((item: any) => ('str' in item ? item.str : ''))
-      .join('\n')
-    fullText += pageText + '\n'
+    pageContents.push(content)
+    rawText += content.items.map((item: any) => ('str' in item ? item.str : '')).join('\n') + '\n'
   }
 
   // Use explicit bank hint first, fall back to auto-detection
-  const bank: BankType = (bankHint && bankHint !== 'unknown') ? bankHint : detectBank(fullText)
-  const lastFour = extractLastFour(fullText, bank)
+  const bank: BankType = (bankHint && bankHint !== 'unknown') ? bankHint : detectBank(rawText)
+  const lastFour = extractLastFour(rawText, bank)
+
+  // Santander PDFs have many tiny text items per visual line — reconstruct visual lines
+  // by grouping items with the same y-coordinate before parsing.
+  // Falabella uses raw extraction (unchanged, already works).
+  let fullText = rawText
+  if (bank === 'santander') {
+    fullText = ''
+    for (const content of pageContents) {
+      const lineMap = new Map<number, { x: number; str: string }[]>()
+      for (const item of content.items) {
+        if (!('str' in item)) continue
+        const str = (item as any).str as string
+        if (!str) continue
+        const transform = (item as any).transform as number[]
+        const x = transform[4]
+        const y = Math.round(transform[5])
+        if (!lineMap.has(y)) lineMap.set(y, [])
+        lineMap.get(y)!.push({ x, str })
+      }
+      const sortedY = Array.from(lineMap.keys()).sort((a, b) => b - a)
+      for (const y of sortedY) {
+        const segs = lineMap.get(y)!.sort((a, b) => a.x - b.x)
+        const line = segs.map(s => s.str).join(' ').replace(/\s{2,}/g, ' ').trim()
+        if (line) fullText += line + '\n'
+      }
+      fullText += '\n'
+    }
+  }
 
   switch (bank) {
     case 'falabella': return parseFalabella(fullText, lastFour)
