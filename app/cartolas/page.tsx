@@ -266,6 +266,8 @@ export default function CartolasPage() {
 
   async function confirm() {
     if (!uploadId || !selectedCard || !parsed) return
+    // Capture in local const so TypeScript doesn't widen back to null after awaits
+    const snap = parsed
     setLoading(true)
     setError('')
     try {
@@ -282,7 +284,7 @@ export default function CartolasPage() {
         await sb.from('transactions').insert(cartolaOnly.map(ct => ({
           user_id: user.id,
           amount: ct.amount,
-          currency: parsed?.currency ?? 'CLP',
+          currency: snap.currency ?? 'CLP',
           type: 'expense',
           category: subMatchedIds.has(ct.id) ? 'suscripciones' : categorizeTransaction(ct.description ?? ''),
           description: ct.description,
@@ -301,10 +303,10 @@ export default function CartolasPage() {
 
       // Update card balance with the cartola total (Monto Total Facturado a Pagar)
       // USD cartolas update balance_usd; CLP cartolas update balance
-      if (parsed.totalAmount > 0) {
-        const balanceField = parsed.currency === 'USD'
-          ? { balance_usd: parsed.totalAmount }
-          : { balance: parsed.totalAmount }
+      if (snap.totalAmount > 0) {
+        const balanceField = snap.currency === 'USD'
+          ? { balance_usd: snap.totalAmount }
+          : { balance: snap.totalAmount }
         await sb.from('credit_cards').update(balanceField).eq('id', selectedCard)
       }
 
