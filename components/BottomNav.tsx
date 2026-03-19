@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useState } from 'react'
 import { getClient } from '@/lib/supabase'
-import type { CreditCard, Transaction } from '@/lib/types'
+import type { CreditCard, Transaction, BankAccount } from '@/lib/types'
 
 const LEFT_TABS  = [
   { href: '/inicio',  label: 'Inicio',  icon: HomeIcon },
@@ -78,17 +78,21 @@ function QuickAddModal({ onClose }: { onClose: () => void }) {
   const [date, setDate]               = useState(new Date().toISOString().split('T')[0])
   const [type, setType]               = useState<'expense' | 'income'>('expense')
   const [cardId, setCardId]           = useState('')
+  const [bankAccountId, setBankAccountId] = useState('')
   const [cards, setCards]             = useState<CreditCard[]>([])
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
   const [saving, setSaving]           = useState(false)
   const [error, setError]             = useState('')
   const [done, setDone]               = useState(false)
 
-  // Load cards once on mount
+  // Load cards + bank accounts once on mount
   useState(() => {
-    getClient().from('credit_cards').select('*').order('created_at').then(({ data }) => {
-      const list = (data ?? []) as CreditCard[]
-      setCards(list)
-      if (list[0]) setCardId(list[0].id)
+    const sb = getClient()
+    sb.from('credit_cards').select('*').order('created_at').then(({ data }) => {
+      setCards((data ?? []) as CreditCard[])
+    })
+    sb.from('bank_accounts').select('*').eq('is_active', true).order('created_at').then(({ data }) => {
+      setBankAccounts((data ?? []) as BankAccount[])
     })
   })
 
@@ -107,7 +111,8 @@ function QuickAddModal({ onClose }: { onClose: () => void }) {
       category: 'otros',
       description: description || null,
       date,
-      credit_card_id: cardId || null,
+      credit_card_id: bankAccountId ? null : (cardId || null),
+      bank_account_id: bankAccountId || null,
       is_installment: false,
       match_status: 'unmatched',
       is_from_cartola: false,
@@ -169,10 +174,21 @@ function QuickAddModal({ onClose }: { onClose: () => void }) {
 
             <div className="grid grid-cols-2 gap-2">
               <input className="input" type="date" value={date} onChange={e => setDate(e.target.value)} required />
-              {cards.length > 0 && (
-                <select className="input" value={cardId} onChange={e => setCardId(e.target.value)}>
-                  <option value="">Sin tarjeta</option>
-                  {cards.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {(cards.length > 0 || bankAccounts.length > 0) && (
+                <select className="input" value={bankAccountId ? `ba:${bankAccountId}` : cardId ? `cc:${cardId}` : ''}
+                  onChange={e => {
+                    const v = e.target.value
+                    if (!v) { setCardId(''); setBankAccountId('') }
+                    else if (v.startsWith('cc:')) { setCardId(v.slice(3)); setBankAccountId('') }
+                    else if (v.startsWith('ba:')) { setBankAccountId(v.slice(3)); setCardId('') }
+                  }}>
+                  <option value="">Sin medio de pago</option>
+                  {cards.length > 0 && <optgroup label="Tarjetas">
+                    {cards.map(c => <option key={c.id} value={`cc:${c.id}`}>{c.name}</option>)}
+                  </optgroup>}
+                  {bankAccounts.length > 0 && <optgroup label="Cuentas">
+                    {bankAccounts.map(b => <option key={b.id} value={`ba:${b.id}`}>{b.name}</option>)}
+                  </optgroup>}
                 </select>
               )}
             </div>

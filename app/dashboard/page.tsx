@@ -35,6 +35,7 @@ interface MonthData {
   forecastUSDAmount: number    // raw USD sum across all cards for this month
   forecastUSDInCLP: number     // forecastUSDAmount * exchange rate
   forecastUSDUnbilled: number  // manual unmatched USD transactions (current month only)
+  forecastBA: number           // bank account direct expenses (Cuenta Corriente)
 }
 
 export default function DashboardPage() {
@@ -148,7 +149,7 @@ export default function DashboardPage() {
     } catch { /* use default 950 if API fails */ }
 
     // Parallel fetch
-    const [txRes, subsRes, loansRes, settingsRes, cardsRes, cardTxsRes, uploadsRes, subLinkedRes, ccPaymentsRes] = await Promise.all([
+    const [txRes, subsRes, loansRes, settingsRes, cardsRes, cardTxsRes, uploadsRes, subLinkedRes, ccPaymentsRes, bankExpRes] = await Promise.all([
       sb.from('transactions').select('amount,currency,date,is_from_cartola,credit_card_id').eq('type', 'expense').is('bank_account_id', null),
       sb.from('subscriptions').select('*').eq('is_active', true),
       sb.from('loans').select('*'),
@@ -158,6 +159,7 @@ export default function DashboardPage() {
       sb.from('cartola_uploads').select('credit_card_id,period_end,total_amount,currency,upcoming_amounts').eq('status', 'procesada').not('period_end', 'is', null).not('total_amount', 'is', null),
       sb.from('transactions').select('subscription_id,amount,date,credit_card_id,currency').eq('type', 'expense').eq('is_from_cartola', false).eq('match_status', 'unmatched').not('subscription_id', 'is', null),
       sb.from('transactions').select('credit_card_id,amount,date').eq('type', 'payment').not('credit_card_id', 'is', null).order('date', { ascending: false }),
+      sb.from('transactions').select('bank_account_id,amount,date').eq('type', 'expense').not('bank_account_id', 'is', null).eq('is_from_cartola', false),
     ])
 
     const txRows = txRes.data ?? []
@@ -169,6 +171,7 @@ export default function DashboardPage() {
     const uploadsData = (uploadsRes.data ?? []) as { credit_card_id: string; period_end: string; total_amount: number; currency?: string; upcoming_amounts?: { dueDate: string; amount: number }[] }[]
     const subLinkedTxsData = (subLinkedRes.data ?? []) as { subscription_id: string; amount: number; date: string; credit_card_id?: string | null; currency: string }[]
     const ccPaymentsData = (ccPaymentsRes.data ?? []) as { credit_card_id: string; amount: number; date: string }[]
+    const bankExpData = (bankExpRes.data ?? []) as { bank_account_id: string; amount: number; date: string }[]
 
     setSubs(subsData)
     setLoans(loansData)
@@ -226,7 +229,7 @@ export default function DashboardPage() {
           })
           .reduce((s: number, tx: any) => s + Number(tx.amount), 0)
 
-        result.push({ month: m, year: y, label: shortMonthLabel(m, y), total, facturado, isForecast: false, forecastIncome: 0, forecastSubs: 0, forecastSubsLinked: 0, forecastLoans: 0, forecastCC: 0, forecastCCUnbilled: 0, forecastUSDAmount: 0, forecastUSDInCLP: 0, forecastUSDUnbilled: 0 })
+        result.push({ month: m, year: y, label: shortMonthLabel(m, y), total, facturado, isForecast: false, forecastIncome: 0, forecastSubs: 0, forecastSubsLinked: 0, forecastLoans: 0, forecastCC: 0, forecastCCUnbilled: 0, forecastUSDAmount: 0, forecastUSDInCLP: 0, forecastUSDUnbilled: 0, forecastBA: 0 })
       } else {
         const income = settingsData?.monthly_budget ?? 0
         const forecastYM = `${y}-${String(m).padStart(2, '0')}`
@@ -322,12 +325,17 @@ export default function DashboardPage() {
         const exchangeRateSeed = settingsData?.usd_exchange_rate ?? 950
         const forecastUSDInCLP = Math.round(forecastUSDAmount * exchangeRateSeed)
 
+        // Bank account direct expenses (manual, is_from_cartola=false) for this month
+        const forecastBA = bankExpData
+          .filter(tx => { const d = new Date(tx.date); return d.getMonth() + 1 === m && d.getFullYear() === y })
+          .reduce((s, tx) => s + Number(tx.amount), 0)
+
         // forecastSubsLinked is a visual indicator only — already included in forecastSubs, don't double-count
         const total = income > 0
-          ? Math.max(0, income - forecastSubs - forecastLoans - forecastCC - forecastUSDInCLP)
-          : forecastSubs + forecastLoans + forecastCC + forecastUSDInCLP
+          ? Math.max(0, income - forecastSubs - forecastLoans - forecastCC - forecastUSDInCLP - forecastBA)
+          : forecastSubs + forecastLoans + forecastCC + forecastUSDInCLP + forecastBA
 
-        result.push({ month: m, year: y, label: shortMonthLabel(m, y), total, facturado: 0, isForecast: true, forecastIncome: income, forecastSubs, forecastSubsLinked, forecastLoans, forecastCC, forecastCCUnbilled, forecastUSDAmount, forecastUSDInCLP, forecastUSDUnbilled })
+        result.push({ month: m, year: y, label: shortMonthLabel(m, y), total, facturado: 0, isForecast: true, forecastIncome: income, forecastSubs, forecastSubsLinked, forecastLoans, forecastCC, forecastCCUnbilled, forecastUSDAmount, forecastUSDInCLP, forecastUSDUnbilled, forecastBA })
       }
     }
 
@@ -432,6 +440,7 @@ export default function DashboardPage() {
                   <ForecastRow label="↳ Sin facturar" amount={sel.forecastSubsLinked} isSub />
                 )}
                 <ForecastRow label="Créditos" amount={sel.forecastLoans} icon="🏦" />
+                <ForecastRow label="Cuenta Corriente" amount={sel.forecastBA} icon="🏛️" />
                 <ForecastRow label="Tarjetas Facturado" amount={sel.forecastCC - sel.forecastCCUnbilled} icon="💳" />
                 {sel.forecastCCUnbilled > 0 && (
                   <ForecastRow label="↳ Sin facturar" amount={sel.forecastCCUnbilled} isSub />

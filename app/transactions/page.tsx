@@ -307,8 +307,8 @@ function TransactionModal({ cards, subs, bankAccounts, initial, onClose, onSaved
       category,
       description:       description || null,
       date,
-      credit_card_id:    cardId || null,
-      bank_account_id:   null,
+      credit_card_id:    bankAccountId ? null : (cardId || null),
+      bank_account_id:   bankAccountId || null,
       is_installment:    isInstallment,
       installment_total: isInstallment ? parseInt(installmentTotal) : null,
       subscription_id:   (type === 'expense' && isSubLinked && subscriptionId) ? subscriptionId : null,
@@ -473,10 +473,22 @@ function TransactionModal({ cards, subs, bankAccounts, initial, onClose, onSaved
                 {CATEGORIES.map(c => <option key={c} value={c}>{CAT_LABEL[c] ?? c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
               </select>
 
-              {cards.length > 0 && (
-                <select className="input" value={cardId} onChange={e => setCardId(e.target.value)}>
-                  <option value="">Sin tarjeta</option>
-                  {cards.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              {/* Payment source: card OR bank account */}
+              {(cards.length > 0 || bankAccounts.length > 0) && (
+                <select className="input" value={bankAccountId ? `ba:${bankAccountId}` : cardId ? `cc:${cardId}` : ''}
+                  onChange={e => {
+                    const v = e.target.value
+                    if (!v) { setCardId(''); setBankAccountId('') }
+                    else if (v.startsWith('cc:')) { setCardId(v.slice(3)); setBankAccountId('') }
+                    else if (v.startsWith('ba:')) { setBankAccountId(v.slice(3)); setCardId('') }
+                  }}>
+                  <option value="">Sin medio de pago</option>
+                  {cards.length > 0 && <optgroup label="Tarjetas">
+                    {cards.map(c => <option key={c.id} value={`cc:${c.id}`}>{c.name}</option>)}
+                  </optgroup>}
+                  {bankAccounts.length > 0 && <optgroup label="Cuentas corrientes">
+                    {bankAccounts.map(b => <option key={b.id} value={`ba:${b.id}`}>{b.name}</option>)}
+                  </optgroup>}
                 </select>
               )}
 
