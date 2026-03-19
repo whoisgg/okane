@@ -130,6 +130,7 @@ export interface CartolaParseResult {
   periodStart?: Date
   periodEnd?: Date
   totalAmount: number
+  currency: string   // 'CLP' | 'USD' | etc.
   transactions: CartolaTransaction[]
   upcomingPayments?: { dueDate: string; amount: number }[]  // From "Vencimiento Próximos 4 meses"
 }

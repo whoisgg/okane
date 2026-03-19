@@ -192,7 +192,7 @@ export default function CartolasPage() {
         transaction_count: parsed.transactions.length,
         matched_count: 0,
         status: 'revisando',
-        currency: 'CLP',
+        currency: parsed.currency ?? 'CLP',
         upcoming_amounts: parsed.upcomingPayments ?? null,
       }
       const { data: uploadData, error: uploadErr } = await sb
@@ -508,7 +508,11 @@ export default function CartolasPage() {
               {parsed.periodEnd && (
                 <InfoRow label="Fecha cierre" value={parsed.periodEnd.toLocaleDateString('es-CL', { day: 'numeric', month: 'long', year: 'numeric' })} />
               )}
-              <InfoRow label="Total a pagar" value={clpFormatted(parsed.totalAmount)} />
+              <InfoRow label="Total a pagar" value={
+                parsed.currency === 'USD'
+                  ? `US$ ${parsed.totalAmount.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                  : clpFormatted(parsed.totalAmount)
+              } />
               <InfoRow label="Movimientos detectados" value={String(parsed.transactions.length)} />
             </div>
 

@@ -42,7 +42,7 @@ export default function DashboardPage() {
   const [loans, setLoans] = useState<Loan[]>([])
   const [cards, setCards] = useState<CreditCard[]>([])
   const [cardTxs, setCardTxs] = useState<{ credit_card_id: string; amount: number; date: string; is_from_cartola?: boolean; match_status?: string }[]>([])
-  const [cartolaUploads, setCartolaUploads] = useState<{ credit_card_id: string; period_end: string; total_amount: number; upcoming_amounts?: { dueDate: string; amount: number }[] }[]>([])
+  const [cartolaUploads, setCartolaUploads] = useState<{ credit_card_id: string; period_end: string; total_amount: number; currency?: string; upcoming_amounts?: { dueDate: string; amount: number }[] }[]>([])
   const [settings, setSettings] = useState<UserSettings | null>(null)
 
   // ── Add subscription ────────────────────────────────────────────────────────
@@ -115,7 +115,7 @@ export default function DashboardPage() {
       sb.from('settings').select('*').single(),
       sb.from('credit_cards').select('*').order('created_at'),
       sb.from('transactions').select('credit_card_id,amount,date,is_from_cartola,match_status').eq('type', 'expense').not('credit_card_id', 'is', null),
-      sb.from('cartola_uploads').select('credit_card_id,period_end,total_amount,upcoming_amounts').eq('status', 'procesada').not('period_end', 'is', null).not('total_amount', 'is', null),
+      sb.from('cartola_uploads').select('credit_card_id,period_end,total_amount,currency,upcoming_amounts').eq('status', 'procesada').not('period_end', 'is', null).not('total_amount', 'is', null),
     ])
 
     const txRows = txRes.data ?? []
@@ -124,7 +124,7 @@ export default function DashboardPage() {
     const settingsData = settingsRes.data as UserSettings | null
     const cardsData = (cardsRes.data ?? []) as CreditCard[]
     const cardTxsData = (cardTxsRes.data ?? []) as { credit_card_id: string; amount: number; date: string; is_from_cartola?: boolean; match_status?: string }[]
-    const uploadsData = (uploadsRes.data ?? []) as { credit_card_id: string; period_end: string; total_amount: number; upcoming_amounts?: { dueDate: string; amount: number }[] }[]
+    const uploadsData = (uploadsRes.data ?? []) as { credit_card_id: string; period_end: string; total_amount: number; currency?: string; upcoming_amounts?: { dueDate: string; amount: number }[] }[]
 
     setSubs(subsData)
     setLoans(loansData)
@@ -468,13 +468,19 @@ export default function DashboardPage() {
                       // Prefer cartola total (Monto Total Facturado a Pagar) when available
                       let periodTotal: number | null = null
                       let periodFromCartola = false
+                      let usdUpload: { total_amount: number } | null = null
                       if (closeDay) {
                         const [, periodEnd] = billingPeriod(closeDay, sel.month, sel.year)
                         const periodEndStr = periodEnd.toISOString().split('T')[0]
 
-                        // 1. Exact cartola match for this billing period
+                        // USD upload for the same card+period (shown as secondary amount)
+                        usdUpload = cartolaUploads.find(u =>
+                          u.credit_card_id === card.id && u.period_end === periodEndStr && u.currency === 'USD'
+                        ) ?? null
+
+                        // 1. Exact CLP cartola match for this billing period
                         const upload = cartolaUploads.find(u =>
-                          u.credit_card_id === card.id && u.period_end === periodEndStr
+                          u.credit_card_id === card.id && u.period_end === periodEndStr && u.currency !== 'USD'
                         )
 
                         if (upload) {
@@ -554,6 +560,11 @@ export default function DashboardPage() {
                                   <p className={`text-base font-bold ${periodTotal > 0 ? 'text-danger' : 'text-text-muted'}`}>
                                     {periodTotal > 0 ? clpFormatted(periodTotal) : '$0'}
                                   </p>
+                                  {usdUpload && (
+                                    <p className="text-xs font-semibold text-danger/80">
+                                      + US$ {usdUpload.total_amount.toLocaleString('es-CL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </p>
+                                  )}
                                   {periodFromCartola && (
                                     <span className="text-[9px] text-text-muted">📄 cartola</span>
                                   )}

@@ -85,6 +85,7 @@ export function parseFalabella(text: string, lastFour: string): CartolaParseResu
     periodStart,
     periodEnd,
     totalAmount,
+    currency: 'CLP',
     transactions: transactions.filter(t => !t.isPayment),
     upcomingPayments: upcomingPayments.length > 0 ? upcomingPayments : undefined,
   }
