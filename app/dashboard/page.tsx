@@ -48,6 +48,7 @@ export default function DashboardPage() {
   const [cardTxs, setCardTxs] = useState<{ credit_card_id: string; amount: number; date: string; is_from_cartola?: boolean; match_status?: string; currency?: string; subscription_id?: string | null }[]>([])
   const [cartolaUploads, setCartolaUploads] = useState<{ credit_card_id: string; period_end: string; total_amount: number; currency?: string; upcoming_amounts?: { dueDate: string; amount: number }[] }[]>([])
   const [subLinkedTxs, setSubLinkedTxs] = useState<{ subscription_id: string; amount: number; date: string; credit_card_id?: string | null; currency: string }[]>([])
+  const [ccPayments, setCcPayments] = useState<{ credit_card_id: string; amount: number; date: string }[]>([])
   const [settings, setSettings] = useState<UserSettings | null>(null)
 
   // ── Add subscription ────────────────────────────────────────────────────────
@@ -147,7 +148,7 @@ export default function DashboardPage() {
     } catch { /* use default 950 if API fails */ }
 
     // Parallel fetch
-    const [txRes, subsRes, loansRes, settingsRes, cardsRes, cardTxsRes, uploadsRes, subLinkedRes] = await Promise.all([
+    const [txRes, subsRes, loansRes, settingsRes, cardsRes, cardTxsRes, uploadsRes, subLinkedRes, ccPaymentsRes] = await Promise.all([
       sb.from('transactions').select('amount,currency,date,is_from_cartola,credit_card_id').eq('type', 'expense'),
       sb.from('subscriptions').select('*').eq('is_active', true),
       sb.from('loans').select('*'),
@@ -156,6 +157,7 @@ export default function DashboardPage() {
       sb.from('transactions').select('credit_card_id,amount,date,is_from_cartola,match_status,currency,subscription_id').eq('type', 'expense').not('credit_card_id', 'is', null),
       sb.from('cartola_uploads').select('credit_card_id,period_end,total_amount,currency,upcoming_amounts').eq('status', 'procesada').not('period_end', 'is', null).not('total_amount', 'is', null),
       sb.from('transactions').select('subscription_id,amount,date,credit_card_id,currency').eq('type', 'expense').eq('is_from_cartola', false).eq('match_status', 'unmatched').not('subscription_id', 'is', null),
+      sb.from('transactions').select('credit_card_id,amount,date').eq('type', 'payment').not('credit_card_id', 'is', null).order('date', { ascending: false }),
     ])
 
     const txRows = txRes.data ?? []
@@ -166,11 +168,13 @@ export default function DashboardPage() {
     const cardTxsData = (cardTxsRes.data ?? []) as { credit_card_id: string; amount: number; date: string; is_from_cartola?: boolean; match_status?: string; currency?: string; subscription_id?: string | null }[]
     const uploadsData = (uploadsRes.data ?? []) as { credit_card_id: string; period_end: string; total_amount: number; currency?: string; upcoming_amounts?: { dueDate: string; amount: number }[] }[]
     const subLinkedTxsData = (subLinkedRes.data ?? []) as { subscription_id: string; amount: number; date: string; credit_card_id?: string | null; currency: string }[]
+    const ccPaymentsData = (ccPaymentsRes.data ?? []) as { credit_card_id: string; amount: number; date: string }[]
 
     setSubs(subsData)
     setLoans(loansData)
     setCards(cardsData)
     setCardTxs(cardTxsData)
+    setCcPayments(ccPaymentsData)
     setCartolaUploads(uploadsData)
     setSubLinkedTxs(subLinkedTxsData)
     setSettings(settingsData)
@@ -719,6 +723,17 @@ export default function DashboardPage() {
                       const showUploadCTA = unbilledAmount > 0 && !hasExactCartola
                       const showUSDUploadCTA = unbilledUSDAmount > 0 && !hasExactUSDCartola
 
+                      // Last payment for this card within last 60 days
+                      const lastPayment = (() => {
+                        const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 60)
+                        return ccPayments
+                          .filter(p => p.credit_card_id === card.id && new Date(p.date) >= cutoff)
+                          .sort((a, b) => b.date.localeCompare(a.date))[0] ?? null
+                      })()
+                      const paymentDaysAgo = lastPayment
+                        ? Math.round((Date.now() - new Date(lastPayment.date).getTime()) / 86400000)
+                        : null
+
                       // Closing status (only for current month)
                       const today = new Date()
                       const isCurrentMonth = sel.month === today.getMonth() + 1 && sel.year === today.getFullYear()
@@ -812,6 +827,14 @@ export default function DashboardPage() {
                               >
                                 📄 Subir cartola →
                               </Link>
+                            </div>
+                          )}
+                          {lastPayment && (
+                            <div className="mt-2 flex items-center justify-between">
+                              <span className="text-[11px] text-success">✓ Pagado {clpFormatted(Number(lastPayment.amount))}</span>
+                              <span className="text-[11px] text-text-muted">
+                                {paymentDaysAgo === 0 ? 'hoy' : paymentDaysAgo === 1 ? 'ayer' : `hace ${paymentDaysAgo} días`}
+                              </span>
                             </div>
                           )}
                         </div>

@@ -1,6 +1,6 @@
 // ── Mirrors iOS Models.swift ──────────────────────────────────────────────────
 
-export type TransactionType = 'expense' | 'income'
+export type TransactionType = 'expense' | 'income' | 'payment'
 export type MatchStatus = 'unmatched' | 'matched' | 'ignored'
 
 export interface Transaction {
@@ -45,8 +45,10 @@ export interface BankAccount {
   user_id: string
   name: string
   bank_name?: string
+  last_four?: string
   balance: number
   currency: string
+  is_active: boolean
   created_at: string
 }
 

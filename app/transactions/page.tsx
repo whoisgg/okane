@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import { getClient } from '@/lib/supabase'
 import AppShell from '@/components/AppShell'
 import { clpFormatted } from '@/lib/utils'
-import type { Transaction, CreditCard, Subscription } from '@/lib/types'
+import type { Transaction, CreditCard, Subscription, BankAccount } from '@/lib/types'
 
 const CATEGORIES = [
   'hogar','comida','salud','transporte','entretenimiento',
@@ -31,9 +31,10 @@ function TransactionsContent() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [cards, setCards]               = useState<CreditCard[]>([])
   const [subs, setSubs]                 = useState<Subscription[]>([])
+  const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
   const [loading, setLoading]           = useState(true)
   const [search, setSearch]             = useState('')
-  const [typeFilter, setTypeFilter]     = useState<'all' | 'expense' | 'income'>('all')
+  const [typeFilter, setTypeFilter]     = useState<'all' | 'expense' | 'income' | 'payment'>('all')
   const [monthFilter, setMonthFilter]   = useState<string>('')
   const [deleting, setDeleting]         = useState<string | null>(null)
   const [editing, setEditing]           = useState<Transaction | null>(null)
@@ -46,14 +47,16 @@ function TransactionsContent() {
 
   const load = useCallback(async () => {
     const sb = getClient()
-    const [txRes, cardsRes, subsRes] = await Promise.all([
+    const [txRes, cardsRes, subsRes, bankRes] = await Promise.all([
       sb.from('transactions').select('*').order('date', { ascending: false }).limit(200),
       sb.from('credit_cards').select('*'),
       sb.from('subscriptions').select('id,name,amount,currency,billing_period').eq('is_active', true).order('name'),
+      sb.from('bank_accounts').select('*').eq('is_active', true).order('created_at'),
     ])
     setTransactions((txRes.data ?? []) as Transaction[])
     setCards((cardsRes.data ?? []) as CreditCard[])
     setSubs((subsRes.data ?? []) as Subscription[])
+    setBankAccounts((bankRes.data ?? []) as BankAccount[])
     setLoading(false)
   }, [])
 
@@ -82,7 +85,8 @@ function TransactionsContent() {
     return true
   })
 
-  const total = filtered.reduce((s, t) => t.type === 'expense' ? s - Number(t.amount) : s + Number(t.amount), 0)
+  // payments are transfers, excluded from income/expense total
+  const total = filtered.reduce((s, t) => t.type === 'expense' ? s - Number(t.amount) : t.type === 'income' ? s + Number(t.amount) : s, 0)
 
   if (loading) {
     return (
@@ -117,6 +121,7 @@ function TransactionsContent() {
             <option value="all">Todos</option>
             <option value="expense">Gastos</option>
             <option value="income">Ingresos</option>
+            <option value="payment">Pagos tarjeta</option>
           </select>
           <select className="input w-auto py-1.5 text-xs" value={monthFilter} onChange={e => setMonthFilter(e.target.value)}>
             <option value="">Todos los meses</option>
@@ -167,8 +172,8 @@ function TransactionsContent() {
                       </div>
                     </div>
                     <div className="ml-4 flex items-center gap-3">
-                      <span className={`whitespace-nowrap text-sm font-semibold ${tx.type === 'expense' ? 'text-danger' : 'text-success'}`}>
-                        {tx.type === 'expense' ? '−' : '+'}{clpFormatted(Number(tx.amount))}
+                      <span className={`whitespace-nowrap text-sm font-semibold ${tx.type === 'expense' ? 'text-danger' : tx.type === 'payment' ? 'text-accent' : 'text-success'}`}>
+                        {tx.type === 'expense' ? '−' : tx.type === 'payment' ? '⇄' : '+'}{clpFormatted(Number(tx.amount))}
                       </span>
                       {/* Delete — always visible on mobile, hover-only on desktop */}
                       <button
@@ -192,8 +197,10 @@ function TransactionsContent() {
           <TransactionModal
             cards={cards}
             subs={subs}
+            bankAccounts={bankAccounts}
             onClose={() => setShowAdd(false)}
             onSaved={(tx) => { setTransactions(prev => [tx, ...prev]); setShowAdd(false) }}
+            onBankAccountCreated={(ba) => setBankAccounts(prev => [...prev, ba])}
           />
         )}
 
@@ -202,12 +209,14 @@ function TransactionsContent() {
           <TransactionModal
             cards={cards}
             subs={subs}
+            bankAccounts={bankAccounts}
             initial={editing}
             onClose={() => setEditing(null)}
             onSaved={(tx) => {
               setTransactions(prev => prev.map(t => t.id === tx.id ? tx : t))
               setEditing(null)
             }}
+            onBankAccountCreated={(ba) => setBankAccounts(prev => [...prev, ba])}
           />
         )}
       </div>
@@ -217,12 +226,14 @@ function TransactionsContent() {
 
 // ── Unified Add / Edit modal ───────────────────────────────────────────────
 
-function TransactionModal({ cards, subs, initial, onClose, onSaved }: {
+function TransactionModal({ cards, subs, bankAccounts, initial, onClose, onSaved, onBankAccountCreated }: {
   cards: CreditCard[]
   subs: Subscription[]
+  bankAccounts: BankAccount[]
   initial?: Transaction
   onClose: () => void
   onSaved: (tx: Transaction) => void
+  onBankAccountCreated: (ba: BankAccount) => void
 }) {
   const isEdit = !!initial
 
@@ -242,8 +253,12 @@ function TransactionModal({ cards, subs, initial, onClose, onSaved }: {
   const [description, setDescription]     = useState(initial?.description ?? '')
   const [category, setCategory]           = useState(initial?.category ?? 'otros')
   const [date, setDate]                   = useState(initial?.date ?? new Date().toISOString().split('T')[0])
-  const [type, setType]                   = useState<'expense' | 'income'>(initial?.type ?? 'expense')
+  const [type, setType]                   = useState<'expense' | 'income' | 'payment'>((initial?.type ?? 'expense') as 'expense' | 'income' | 'payment')
   const [cardId, setCardId]               = useState(initial?.credit_card_id ?? '')
+  const [bankAccountId, setBankAccountId] = useState(initial?.bank_account_id ?? '')
+  const [newBankName, setNewBankName]     = useState('')
+  const [newBankLastFour, setNewBankLastFour] = useState('')
+  const [creatingBank, setCreatingBank]   = useState(false)
   const [isInstallment, setIsInstallment] = useState(initial?.is_installment ?? false)
   const [installmentTotal, setInstallmentTotal] = useState(String(initial?.installment_total ?? ''))
   const [isSubLinked, setIsSubLinked]     = useState(!!(initial?.subscription_id) || initial?.category === 'suscripciones')
@@ -274,7 +289,18 @@ function TransactionModal({ cards, subs, initial, onClose, onSaved }: {
       setError('Ingresa un monto válido'); setSaving(false); return
     }
 
-    const body: any = {
+    const body: any = type === 'payment' ? {
+      amount:           parsedAmount,
+      currency,
+      type:             'payment',
+      category:         'pago_tarjeta',
+      description:      description || null,
+      date,
+      credit_card_id:   cardId || null,
+      bank_account_id:  bankAccountId || null,
+      is_installment:   false,
+      subscription_id:  null,
+    } : {
       amount:            parsedAmount,
       currency,
       type,
@@ -282,6 +308,7 @@ function TransactionModal({ cards, subs, initial, onClose, onSaved }: {
       description:       description || null,
       date,
       credit_card_id:    cardId || null,
+      bank_account_id:   null,
       is_installment:    isInstallment,
       installment_total: isInstallment ? parseInt(installmentTotal) : null,
       subscription_id:   (type === 'expense' && isSubLinked && subscriptionId) ? subscriptionId : null,
@@ -318,25 +345,33 @@ function TransactionModal({ cards, subs, initial, onClose, onSaved }: {
           <button onClick={onClose} className="text-text-muted hover:text-text-primary">✕</button>
         </div>
         <form onSubmit={save} className="space-y-3">
-          {/* Type + Currency toggles */}
+          {/* Type tabs */}
           <div className="flex gap-2">
-            {(['expense', 'income'] as const).map(t => (
+            {(['expense', 'income', 'payment'] as const).map(t => (
               <button key={t} type="button" onClick={() => setType(t)}
-                className={`flex-1 rounded-lg py-2 text-sm font-medium transition ${type === t ? (t === 'expense' ? 'bg-danger/10 text-danger' : 'bg-success/10 text-success') : 'bg-surface-high text-text-secondary'}`}>
-                {t === 'expense' ? 'Gasto' : 'Ingreso'}
+                className={`flex-1 rounded-lg py-2 text-sm font-medium transition ${
+                  type === t
+                    ? t === 'expense' ? 'bg-danger/10 text-danger'
+                    : t === 'income'  ? 'bg-success/10 text-success'
+                    : 'bg-accent/10 text-accent'
+                    : 'bg-surface-high text-text-secondary'
+                }`}>
+                {t === 'expense' ? 'Gasto' : t === 'income' ? 'Ingreso' : 'Pago tarjeta'}
               </button>
             ))}
           </div>
 
-          {/* Currency selector */}
-          <div className="flex gap-1 rounded-lg bg-surface-high p-1">
-            {(['CLP', 'USD'] as const).map(cur => (
-              <button key={cur} type="button" onClick={() => handleCurrencySwitch(cur)}
-                className={`flex-1 rounded-md py-1 text-xs font-semibold transition ${currency === cur ? (cur === 'USD' ? 'bg-emerald-500 text-white shadow-sm' : 'bg-accent text-white shadow-sm') : 'text-text-muted hover:text-text-primary'}`}>
-                {cur}
-              </button>
-            ))}
-          </div>
+          {/* Currency selector (not shown for payments — always CLP) */}
+          {type !== 'payment' && (
+            <div className="flex gap-1 rounded-lg bg-surface-high p-1">
+              {(['CLP', 'USD'] as const).map(cur => (
+                <button key={cur} type="button" onClick={() => handleCurrencySwitch(cur)}
+                  className={`flex-1 rounded-md py-1 text-xs font-semibold transition ${currency === cur ? (cur === 'USD' ? 'bg-emerald-500 text-white shadow-sm' : 'bg-accent text-white shadow-sm') : 'text-text-muted hover:text-text-primary'}`}>
+                  {cur}
+                </button>
+              ))}
+            </div>
+          )}
 
           {/* Amount */}
           <div className="relative">
@@ -356,58 +391,105 @@ function TransactionModal({ cards, subs, initial, onClose, onSaved }: {
           {/* Description */}
           <input className="input" placeholder="Descripción (opcional)" value={description} onChange={e => setDescription(e.target.value)} />
 
-          {/* Category */}
-          <select className="input" value={category} onChange={e => {
-            setCategory(e.target.value)
-            if (e.target.value === 'suscripciones') setIsSubLinked(true)
-          }}>
-            {CATEGORIES.map(c => <option key={c} value={c}>{CAT_LABEL[c] ?? c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
-          </select>
+          {/* ── PAGO TARJETA fields ── */}
+          {type === 'payment' && (
+            <>
+              {/* Which CC was paid */}
+              {cards.length > 0 && (
+                <select className="input" value={cardId} onChange={e => setCardId(e.target.value)} required>
+                  <option value="">Selecciona tarjeta pagada...</option>
+                  {cards.map(c => <option key={c.id} value={c.id}>{c.name} {c.last_four ? `···· ${c.last_four}` : ''}</option>)}
+                </select>
+              )}
 
-          {/* Date */}
-          <input className="input" type="date" value={date} onChange={e => setDate(e.target.value)} required />
+              {/* From which bank account */}
+              {bankAccounts.length > 0 ? (
+                <select className="input" value={bankAccountId} onChange={e => setBankAccountId(e.target.value)}>
+                  <option value="">Cuenta corriente (opcional)</option>
+                  {bankAccounts.map(b => <option key={b.id} value={b.id}>{b.name}{b.last_four ? ` ···· ${b.last_four}` : ''}</option>)}
+                  <option value="__new__">+ Agregar cuenta corriente</option>
+                </select>
+              ) : (
+                <button type="button" className="input text-left text-text-muted text-sm"
+                  onClick={() => setCreatingBank(true)}>
+                  + Agregar cuenta corriente
+                </button>
+              )}
 
-          {/* Card */}
-          {cards.length > 0 && (
-            <select className="input" value={cardId} onChange={e => setCardId(e.target.value)}>
-              <option value="">Sin tarjeta</option>
-              {cards.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-            </select>
+              {/* Inline new bank account form */}
+              {(creatingBank || bankAccountId === '__new__') && (
+                <div className="rounded-lg bg-surface-high p-3 space-y-2">
+                  <p className="text-xs font-medium text-text-secondary">Nueva cuenta corriente</p>
+                  <input className="input" placeholder="Nombre (ej: Cuenta Santander)" value={newBankName} onChange={e => setNewBankName(e.target.value)} />
+                  <input className="input" placeholder="Últimos 4 dígitos (opcional)" maxLength={4} value={newBankLastFour} onChange={e => setNewBankLastFour(e.target.value.replace(/\D/g, ''))} />
+                  <button type="button" className="btn-primary text-xs px-3 py-1.5 w-full" onClick={async () => {
+                    if (!newBankName.trim()) return
+                    const sb = getClient()
+                    const { data: { user } } = await sb.auth.getUser()
+                    if (!user) return
+                    const { data } = await sb.from('bank_accounts').insert({
+                      user_id: user.id, name: newBankName.trim(),
+                      last_four: newBankLastFour || null, is_active: true,
+                    }).select().single()
+                    if (data) {
+                      onBankAccountCreated(data as BankAccount)
+                      setBankAccountId(data.id)
+                      setCreatingBank(false)
+                      setNewBankName('')
+                      setNewBankLastFour('')
+                    }
+                  }}>Guardar cuenta</button>
+                </div>
+              )}
+            </>
           )}
 
-          {/* Subscription link */}
-          {type === 'expense' && (
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={isSubLinked} onChange={e => {
-                setIsSubLinked(e.target.checked)
-                if (e.target.checked) {
-                  setCategory('suscripciones')
-                } else {
-                  setSubscriptionId('')
-                  if (category === 'suscripciones') setCategory('otros')
-                }
-              }} />
-              <span className="text-text-secondary">Es una suscripción</span>
-            </label>
-          )}
-          {type === 'expense' && isSubLinked && subs.length > 0 && (
-            <select className="input" value={subscriptionId} onChange={e => setSubscriptionId(e.target.value)}>
-              <option value="">Selecciona suscripción...</option>
-              {subs.map(s => (
-                <option key={s.id} value={s.id}>
-                  {s.name} — {Number(s.amount).toLocaleString('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 })}
-                </option>
-              ))}
-            </select>
-          )}
+          {/* ── GASTO / INGRESO fields ── */}
+          {type !== 'payment' && (
+            <>
+              <select className="input" value={category} onChange={e => {
+                setCategory(e.target.value)
+                if (e.target.value === 'suscripciones') setIsSubLinked(true)
+              }}>
+                {CATEGORIES.map(c => <option key={c} value={c}>{CAT_LABEL[c] ?? c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
+              </select>
 
-          {/* Installments */}
-          <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={isInstallment} onChange={e => setIsInstallment(e.target.checked)} />
-            <span className="text-text-secondary">Es en cuotas</span>
-          </label>
-          {isInstallment && (
-            <input className="input" placeholder="Total de cuotas" value={installmentTotal} onChange={e => setInstallmentTotal(e.target.value)} />
+              {cards.length > 0 && (
+                <select className="input" value={cardId} onChange={e => setCardId(e.target.value)}>
+                  <option value="">Sin tarjeta</option>
+                  {cards.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              )}
+
+              {type === 'expense' && (
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={isSubLinked} onChange={e => {
+                    setIsSubLinked(e.target.checked)
+                    if (e.target.checked) { setCategory('suscripciones') }
+                    else { setSubscriptionId(''); if (category === 'suscripciones') setCategory('otros') }
+                  }} />
+                  <span className="text-text-secondary">Es una suscripción</span>
+                </label>
+              )}
+              {type === 'expense' && isSubLinked && subs.length > 0 && (
+                <select className="input" value={subscriptionId} onChange={e => setSubscriptionId(e.target.value)}>
+                  <option value="">Selecciona suscripción...</option>
+                  {subs.map(s => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} — {Number(s.amount).toLocaleString('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 })}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              <label className="flex items-center gap-2 text-sm">
+                <input type="checkbox" checked={isInstallment} onChange={e => setIsInstallment(e.target.checked)} />
+                <span className="text-text-secondary">Es en cuotas</span>
+              </label>
+              {isInstallment && (
+                <input className="input" placeholder="Total de cuotas" value={installmentTotal} onChange={e => setInstallmentTotal(e.target.value)} />
+              )}
+            </>
           )}
 
           {error && <p className="text-xs text-danger">{error}</p>}
