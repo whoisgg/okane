@@ -14,7 +14,8 @@ function parse(v: string) {
   return parseInt(v.replace(/\./g, '') || '0', 10)
 }
 
-const EMPTY = { name: '', lender: '', payment: '', balance: '', total: '', rate: '' }
+const thisMonth = () => { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}` }
+const EMPTY = { name: '', lender: '', payment: '', balance: '', total: '', rate: '', startDate: thisMonth(), endDate: '' }
 
 export default function CreditosPage() {
   const [loans, setLoans]     = useState<Loan[]>([])
@@ -44,14 +45,19 @@ export default function CreditosPage() {
   async function save() {
     if (!form.name.trim() || !form.payment) return
     setSaving(true); setError(null)
-    const { error: err } = await getClient().from('loans').insert({
+    const sb = getClient()
+    const { data: { user } } = await sb.auth.getUser()
+    if (!user) { setError('No autenticado'); setSaving(false); return }
+    const { error: err } = await sb.from('loans').insert({
+      user_id:           user.id,
       name:              form.name.trim(),
       lender:            form.lender.trim() || form.name.trim(),
       total_amount:      parse(form.total) || parse(form.payment),
       remaining_balance: parse(form.balance) || parse(form.total) || parse(form.payment),
       monthly_payment:   parse(form.payment),
       interest_rate:     form.rate ? parseFloat(form.rate) : 0,
-      start_date:        new Date().toISOString().split('T')[0],
+      start_date:        form.startDate + '-01',
+      end_date:          form.endDate ? form.endDate + '-01' : null,
     })
     if (err) { setError(err.message); setSaving(false); return }
     setForm(EMPTY); setShowForm(false); setSaving(false)
@@ -137,6 +143,18 @@ export default function CreditosPage() {
                 </div>
               </div>
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs text-text-muted mb-1">Desde *</label>
+                <input type="month" className="input w-full text-sm" value={form.startDate}
+                  onChange={e => setForm(p => ({ ...p, startDate: e.target.value }))} />
+              </div>
+              <div>
+                <label className="block text-xs text-text-muted mb-1">Hasta (opcional)</label>
+                <input type="month" className="input w-full text-sm" value={form.endDate}
+                  onChange={e => setForm(p => ({ ...p, endDate: e.target.value }))} />
+              </div>
+            </div>
             {error && <p className="text-sm text-danger">{error}</p>}
             <div className="flex gap-3">
               <button onClick={() => { setShowForm(false); setForm(EMPTY) }} className="btn-secondary flex-1">Cancelar</button>
@@ -173,7 +191,10 @@ export default function CreditosPage() {
                   <div className="flex items-start justify-between">
                     <div>
                       <p className="font-semibold text-text-primary">{loan.name}</p>
-                      <p className="text-xs text-text-muted mt-0.5">{loan.lender}{loan.interest_rate > 0 ? ` · ${loan.interest_rate}% anual` : ''}</p>
+                      <p className="text-xs text-text-muted mt-0.5">
+                        {loan.lender}{loan.interest_rate > 0 ? ` · ${loan.interest_rate}% anual` : ''}
+                        {loan.end_date && ` · hasta ${loan.end_date.slice(0, 7)}`}
+                      </p>
                     </div>
                     <div className="flex items-center gap-3">
                       <div className="text-right">
