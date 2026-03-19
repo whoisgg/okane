@@ -1,5 +1,6 @@
 // ── PDF text extraction + bank routing ────────────────────────────────────────
 // This is a TypeScript port of CartolaParser.swift using pdfjs-dist.
+// Also exports extractSantanderText for CC-cartola reconciliation.
 
 import type { CartolaParseResult, BankType } from '../types'
 import { parseFalabella } from './falabella'
@@ -67,6 +68,39 @@ export async function parsePDFFile(file: File, bankHint?: BankType): Promise<Car
     default:
       throw new Error('Banco no reconocido. Soportamos Falabella y Santander.')
   }
+}
+
+// ── Export raw text extraction for CC cartola reconciliation ──────────────────
+// Uses the same Santander visual-line grouping so the CC summary table is intact.
+export async function extractSantanderText(file: File): Promise<string> {
+  const arrayBuffer = await file.arrayBuffer()
+  const pdfjsLib = await getPdfJs()
+  const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise
+
+  let fullText = ''
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i)
+    const content = await page.getTextContent()
+    const lineMap = new Map<number, { x: number; str: string }[]>()
+    for (const item of content.items) {
+      if (!('str' in item)) continue
+      const str = (item as any).str as string
+      if (!str) continue
+      const transform = (item as any).transform as number[]
+      const x = transform[4]
+      const y = Math.round(transform[5])
+      if (!lineMap.has(y)) lineMap.set(y, [])
+      lineMap.get(y)!.push({ x, str })
+    }
+    const sortedY = Array.from(lineMap.keys()).sort((a, b) => b - a)
+    for (const y of sortedY) {
+      const segs = lineMap.get(y)!.sort((a, b) => a.x - b.x)
+      const line = segs.map(s => s.str).join(' ').replace(/\s{2,}/g, ' ').trim()
+      if (line) fullText += line + '\n'
+    }
+    fullText += '\n'
+  }
+  return fullText
 }
 
 function detectBank(text: string): BankType {

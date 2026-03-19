@@ -13,6 +13,7 @@ const NAV = [
   { href: '/suscripciones',    label: 'Suscripciones',    icon: RepeatIcon },
   { href: '/transactions',     label: 'Movimientos',      icon: ListIcon },
   { href: '/cartolas',         label: 'Cartolas PDF',     icon: DocumentIcon },
+  { href: '/cuadre',           label: 'Cuadre CC',        icon: RefreshIcon },
   { href: '/config',           label: 'Configuración',    icon: GearIcon },
 ]
 
@@ -138,6 +139,15 @@ function RepeatIcon({ className, active }: { className?: string; active?: boolea
       <path d="M3 11V9a4 4 0 014-4h14"/>
       <polyline points="7 23 3 19 7 15"/>
       <path d="M21 13v2a4 4 0 01-4 4H3"/>
+    </svg>
+  )
+}
+function RefreshIcon({ className, active }: { className?: string; active?: boolean }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.2 : 1.8} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M23 4v6h-6"/>
+      <path d="M1 20v-6h6"/>
+      <path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/>
     </svg>
   )
 }
