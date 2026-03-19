@@ -57,8 +57,9 @@ export function parseSantander(text: string, lastFour: string): CartolaParseResu
   // Total facturado — CLP uses "$", USD uses "US$" before the amount
   let totalAmount = 0
   if (isUSD) {
-    // "US$ 1.057,55" on same line or next line after "MONTO TOTAL FACTURADO A PAGAR"
-    const m = text.match(/MONTO TOTAL FACTURADO A PAGAR[^0-9\n]*\n?\s*US\$\s*([\d.,]+)/i)
+    // "US$ 1.057,55" appears within a few lines of "MONTO TOTAL FACTURADO A PAGAR"
+    // but with intermediate text (Timbre, Banco, date) in between — allow up to 200 chars
+    const m = text.match(/MONTO TOTAL FACTURADO A PAGAR[\s\S]{0,200}?US\$\s*([\d.,]+)/i)
     if (m) totalAmount = parseAmountDecimal(m[1])
   } else {
     // Allow the $ amount to be on the same line OR the very next line.
