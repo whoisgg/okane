@@ -149,7 +149,7 @@ export default function DashboardPage() {
 
     // Parallel fetch
     const [txRes, subsRes, loansRes, settingsRes, cardsRes, cardTxsRes, uploadsRes, subLinkedRes, ccPaymentsRes] = await Promise.all([
-      sb.from('transactions').select('amount,currency,date,is_from_cartola,credit_card_id').eq('type', 'expense'),
+      sb.from('transactions').select('amount,currency,date,is_from_cartola,credit_card_id').eq('type', 'expense').is('bank_account_id', null),
       sb.from('subscriptions').select('*').eq('is_active', true),
       sb.from('loans').select('*'),
       sb.from('settings').select('*').single(),
