@@ -9,12 +9,13 @@ import type { Transaction, CreditCard, Subscription } from '@/lib/types'
 
 const CATEGORIES = [
   'hogar','comida','salud','transporte','entretenimiento',
-  'ropa','educacion','tecnologia','viajes','servicios','otros',
+  'ropa','educacion','tecnologia','viajes','servicios','suscripciones','otros',
 ]
 const CAT_LABEL: Record<string,string> = {
   hogar:'Hogar', comida:'Comida', salud:'Salud', transporte:'Transporte',
   entretenimiento:'Entretención', ropa:'Ropa', educacion:'Educación',
-  tecnologia:'Tecnología', viajes:'Viajes', servicios:'Servicios', otros:'Compras',
+  tecnologia:'Tecnología', viajes:'Viajes', servicios:'Servicios',
+  suscripciones:'Suscripciones', otros:'Compras',
 }
 
 export default function TransactionsPage() {
@@ -245,7 +246,7 @@ function TransactionModal({ cards, subs, initial, onClose, onSaved }: {
   const [cardId, setCardId]               = useState(initial?.credit_card_id ?? '')
   const [isInstallment, setIsInstallment] = useState(initial?.is_installment ?? false)
   const [installmentTotal, setInstallmentTotal] = useState(String(initial?.installment_total ?? ''))
-  const [isSubLinked, setIsSubLinked]     = useState(!!(initial?.subscription_id))
+  const [isSubLinked, setIsSubLinked]     = useState(!!(initial?.subscription_id) || initial?.category === 'suscripciones')
   const [subscriptionId, setSubscriptionId] = useState(initial?.subscription_id ?? '')
   const [saving, setSaving]               = useState(false)
   const [error, setError]                 = useState('')
@@ -356,7 +357,10 @@ function TransactionModal({ cards, subs, initial, onClose, onSaved }: {
           <input className="input" placeholder="Descripción (opcional)" value={description} onChange={e => setDescription(e.target.value)} />
 
           {/* Category */}
-          <select className="input" value={category} onChange={e => setCategory(e.target.value)}>
+          <select className="input" value={category} onChange={e => {
+            setCategory(e.target.value)
+            if (e.target.value === 'suscripciones') setIsSubLinked(true)
+          }}>
             {CATEGORIES.map(c => <option key={c} value={c}>{CAT_LABEL[c] ?? c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
           </select>
 
@@ -376,7 +380,12 @@ function TransactionModal({ cards, subs, initial, onClose, onSaved }: {
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={isSubLinked} onChange={e => {
                 setIsSubLinked(e.target.checked)
-                if (!e.target.checked) setSubscriptionId('')
+                if (e.target.checked) {
+                  setCategory('suscripciones')
+                } else {
+                  setSubscriptionId('')
+                  if (category === 'suscripciones') setCategory('otros')
+                }
               }} />
               <span className="text-text-secondary">Es una suscripción</span>
             </label>
