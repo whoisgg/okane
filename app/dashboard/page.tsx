@@ -823,14 +823,14 @@ export default function DashboardPage() {
                             </div>
                           )}
                           {showUSDUploadCTA && (
-                            <div className="mt-2 flex items-center justify-between rounded-lg bg-emerald-500/10 px-3 py-2">
-                              <div className="flex items-center gap-1.5 text-xs text-emerald-600">
+                            <div className="mt-2 flex items-center justify-between rounded-lg bg-warning/10 px-3 py-2">
+                              <div className="flex items-center gap-1.5 text-xs text-warning">
                                 <span>⚠</span>
                                 <span>US$ {unbilledUSDAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} sin facturar</span>
                               </div>
                               <Link
                                 href="/cartolas"
-                                className="flex items-center gap-1 text-xs font-semibold text-emerald-600 hover:underline"
+                                className="flex items-center gap-1 text-xs font-semibold text-warning hover:underline"
                               >
                                 📄 Subir cartola →
                               </Link>
