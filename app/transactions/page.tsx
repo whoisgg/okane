@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { getClient } from '@/lib/supabase'
 import AppShell from '@/components/AppShell'
@@ -13,6 +13,14 @@ const CATEGORIES = [
 ]
 
 export default function TransactionsPage() {
+  return (
+    <Suspense>
+      <TransactionsContent />
+    </Suspense>
+  )
+}
+
+function TransactionsContent() {
   const searchParams = useSearchParams()
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [cards, setCards]               = useState<CreditCard[]>([])
