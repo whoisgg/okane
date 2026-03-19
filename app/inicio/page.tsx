@@ -159,7 +159,13 @@ export default function InicioPage() {
       sb.from('category_budgets').select('*'),
     ])
 
-    setEmail(userData?.user?.email?.split('@')[0] ?? '')
+    // Check auth first — unauthenticated users go to login, not setup
+    if (!userData?.user) {
+      router.replace('/login')
+      return
+    }
+
+    setEmail(userData.user.email?.split('@')[0] ?? '')
     setTxs((txRes.data ?? []) as Transaction[])
     setCatBudgets((catBudgetsRes.data ?? []) as CategoryBudget[])
     const s = settingsRes.data as UserSettings | null
