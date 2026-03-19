@@ -844,23 +844,6 @@ export default function DashboardPage() {
                               </span>
                             </div>
                           )}
-                          {(card.balance > 0 || card.balance_usd > 0 || unbilledAmount > 0) && (
-                            <div className="mt-2 border-t border-border/40 pt-2 flex items-center justify-between">
-                              <span className="text-[11px] text-text-muted">Deuda estimada</span>
-                              <div className="text-right">
-                                {(card.balance > 0 || unbilledAmount > 0) && (
-                                  <p className="text-[11px] font-semibold text-danger">
-                                    {clpFormatted(card.balance + unbilledAmount)}
-                                  </p>
-                                )}
-                                {card.balance_usd > 0 && (
-                                  <p className="text-[11px] font-semibold text-emerald-600">
-                                    + US$ {card.balance_usd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                          )}
                         </div>
                       )
                     })}
