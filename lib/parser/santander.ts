@@ -70,6 +70,19 @@ export function parseSantander(text: string, lastFour: string): CartolaParseResu
     if (m) totalAmount = parseAmount(m[1])
   }
 
+  // ── Cupo Utilizado (deuda total real de la tarjeta) ─────────────────────────
+  // CLP: "CUPO TOTAL $ 12.000.000 $ 5.502.429 $ 6.497.571" — 2nd $ = utilizado
+  // USD: "DEUDA TOTAL US$ 1.057,55" (also appears as 2nd US$ on CUPO TOTAL line)
+  let cupoUtilizado: number | undefined
+  if (!isUSD) {
+    // Multiline: match data row "CUPO TOTAL $ 12.000.000 $ 5.502.429 ..." (2nd $ = utilizado)
+    const cupoM = text.match(/^CUPO TOTAL\s+\$\s*([\d.]+)\s+\$\s*([\d.]+)/im)
+    if (cupoM) cupoUtilizado = parseAmount(cupoM[2])
+  } else {
+    const deudaM = text.match(/DEUDA TOTAL\s+US\$\s*([\d.,]+)/i)
+    if (deudaM) cupoUtilizado = parseAmountDecimal(deudaM[1])
+  }
+
   // ── Vencimiento Próximos 4 Meses (CLP only — USD statement has no such table) ─
   const upcomingPayments: { dueDate: string; amount: number }[] = []
   if (!isUSD) {
@@ -206,6 +219,7 @@ export function parseSantander(text: string, lastFour: string): CartolaParseResu
     periodStart,
     periodEnd,
     totalAmount,
+    cupoUtilizado,
     currency,
     transactions,
     upcomingPayments: upcomingPayments.length > 0 ? upcomingPayments : undefined,

@@ -18,6 +18,10 @@ export function parseFalabella(text: string, lastFour: string): CartolaParseResu
   const totalPattern = /Monto Total Facturado a Pagar\s*\$?([\d.]+)/i
   const totalAmount = parseAmount(firstMatch(totalPattern, text) ?? '0')
 
+  // Cupo Utilizado: "Cupo Total* 33.400.000 3.176.030 30.223.970" — 2nd number = utilizado
+  const cupoM = text.match(/Cupo Total\*?\s+[\d.]+\s+([\d.]+)/i)
+  const cupoUtilizado = cupoM ? parseAmount(cupoM[1]) : undefined
+
   // ── Transaction pattern ─────────────────────────────────────────────────────
   // Groups: 1=date  2=description  3=totalAmt  4=cuotaNum  5=cuotaTotal  6=monthlyCuota
   const txRE = /(\d{2}\/\d{2}\/\d{4})\s+(.+?)\s+T\s+[\d.,]+\s+([\d.,]+)\s+(\d{2})\/(\d{2})(?:\s+[a-zA-Z]+-\d{4}\s+([\d.,]+))?/g
@@ -85,6 +89,7 @@ export function parseFalabella(text: string, lastFour: string): CartolaParseResu
     periodStart,
     periodEnd,
     totalAmount,
+    cupoUtilizado,
     currency: 'CLP',
     transactions: transactions.filter(t => !t.isPayment),
     upcomingPayments: upcomingPayments.length > 0 ? upcomingPayments : undefined,

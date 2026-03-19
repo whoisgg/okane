@@ -655,10 +655,13 @@ export default function DashboardPage() {
                       if (closeDay) {
                         const [, periodEnd] = billingPeriod(closeDay, sel.month, sel.year)
                         const periodEndStr = periodEnd.toISOString().split('T')[0]
+                        // Also accept the closing day itself as a valid period_end (as stored by bank PDFs)
+                        const closingDayStr = new Date(sel.year, sel.month - 1, closeDay).toISOString().split('T')[0]
+                        const periodEndStrs = [periodEndStr, closingDayStr]
 
                         // USD upload for the same card+period — if no exact match, carry forward latest
                         usdUpload = cartolaUploads.find(u =>
-                          u.credit_card_id === card.id && u.period_end === periodEndStr && u.currency === 'USD'
+                          u.credit_card_id === card.id && periodEndStrs.includes(u.period_end ?? '') && u.currency === 'USD'
                         ) ?? cartolaUploads
                           .filter(u => u.credit_card_id === card.id && u.currency === 'USD')
                           .sort((a, b) => b.period_end.localeCompare(a.period_end))[0]
@@ -666,7 +669,7 @@ export default function DashboardPage() {
 
                         // 1. Exact CLP cartola match for this billing period
                         const upload = cartolaUploads.find(u =>
-                          u.credit_card_id === card.id && u.period_end === periodEndStr && u.currency !== 'USD'
+                          u.credit_card_id === card.id && periodEndStrs.includes(u.period_end ?? '') && u.currency !== 'USD'
                         )
 
                         if (upload) {
@@ -708,18 +711,25 @@ export default function DashboardPage() {
                       const unbilledUSDAmount = closeDay
                         ? billingTotalUnbilledUSD(cardTxs, card.id, closeDay, sel.month, sel.year)
                         : 0
-                      const hasExactCartola = (() => {
-                        if (!closeDay) return false
+                      // Accept period_end matching either billingPeriod end (closingDay-1)
+                      // or the closing day itself (as stored by bank PDFs)
+                      const cartolaEndStrings = (() => {
+                        if (!closeDay) return []
                         const [, pe] = billingPeriod(closeDay, sel.month, sel.year)
                         const peStr = pe.toISOString().split('T')[0]
-                        return cartolaUploads.some(u => u.credit_card_id === card.id && u.period_end === peStr && (u.currency ?? 'CLP') !== 'USD')
+                        const closingDayStr = new Date(sel.year, sel.month - 1, closeDay).toISOString().split('T')[0]
+                        return [peStr, closingDayStr]
                       })()
-                      const hasExactUSDCartola = (() => {
-                        if (!closeDay) return false
-                        const [, pe] = billingPeriod(closeDay, sel.month, sel.year)
-                        const peStr = pe.toISOString().split('T')[0]
-                        return cartolaUploads.some(u => u.credit_card_id === card.id && u.period_end === peStr && u.currency === 'USD')
-                      })()
+                      const hasExactCartola = cartolaUploads.some(u =>
+                        u.credit_card_id === card.id &&
+                        cartolaEndStrings.includes(u.period_end ?? '') &&
+                        (u.currency ?? 'CLP') !== 'USD'
+                      )
+                      const hasExactUSDCartola = cartolaUploads.some(u =>
+                        u.credit_card_id === card.id &&
+                        cartolaEndStrings.includes(u.period_end ?? '') &&
+                        u.currency === 'USD'
+                      )
                       const showUploadCTA = unbilledAmount > 0 && !hasExactCartola
                       const showUSDUploadCTA = unbilledUSDAmount > 0 && !hasExactUSDCartola
 
@@ -837,6 +847,23 @@ export default function DashboardPage() {
                               </span>
                             </div>
                           )}
+                          {(card.balance > 0 || card.balance_usd > 0 || unbilledAmount > 0) && (
+                            <div className="mt-2 border-t border-border/40 pt-2 flex items-center justify-between">
+                              <span className="text-[11px] text-text-muted">Deuda estimada</span>
+                              <div className="text-right">
+                                {(card.balance > 0 || unbilledAmount > 0) && (
+                                  <p className="text-[11px] font-semibold text-danger">
+                                    {clpFormatted(card.balance + unbilledAmount)}
+                                  </p>
+                                )}
+                                {card.balance_usd > 0 && (
+                                  <p className="text-[11px] font-semibold text-emerald-600">
+                                    + US$ {card.balance_usd.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )
                     })}
@@ -849,10 +876,12 @@ export default function DashboardPage() {
                         if (!c.closing_day) continue
                         const [, periodEnd] = billingPeriod(c.closing_day, sel.month, sel.year)
                         const periodEndStr = periodEnd.toISOString().split('T')[0]
+                        const closingDayStr2 = new Date(sel.year, sel.month - 1, c.closing_day).toISOString().split('T')[0]
+                        const periodEndStrs2 = [periodEndStr, closingDayStr2]
 
                         // CLP portion
                         const clpUpload = cartolaUploads.find(u =>
-                          u.credit_card_id === c.id && u.period_end === periodEndStr && u.currency !== 'USD'
+                          u.credit_card_id === c.id && periodEndStrs2.includes(u.period_end ?? '') && u.currency !== 'USD'
                         )
                         if (clpUpload) {
                           clpTotal += clpUpload.total_amount
@@ -869,7 +898,7 @@ export default function DashboardPage() {
 
                         // USD portion — find USD cartola for same card + period
                         const usdUpload = cartolaUploads.find(u =>
-                          u.credit_card_id === c.id && u.period_end === periodEndStr && u.currency === 'USD'
+                          u.credit_card_id === c.id && periodEndStrs2.includes(u.period_end ?? '') && u.currency === 'USD'
                         )
                         if (usdUpload) usdTotal += usdUpload.total_amount
                       }
@@ -902,11 +931,12 @@ export default function DashboardPage() {
 
 // Given a card's closing_day and the selected month/year, return the billing period [start, end] as Date objects
 function billingPeriod(closingDay: number, month: number, year: number): [Date, Date] {
-  const end = new Date(year, month - 1, closingDay)
-  // Start = closing_day + 1 of previous month
+  // The closing day OPENS the new billing period.
+  // e.g. closing_day=24 → March period = [Feb 24, Mar 23]
+  const end = new Date(year, month - 1, closingDay - 1)
   const prevMonth = month === 1 ? 12 : month - 1
   const prevYear  = month === 1 ? year - 1 : year
-  const start = new Date(prevYear, prevMonth - 1, closingDay + 1)
+  const start = new Date(prevYear, prevMonth - 1, closingDay)
   return [start, end]
 }
 

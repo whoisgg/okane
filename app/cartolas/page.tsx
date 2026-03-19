@@ -89,10 +89,32 @@ export default function CartolasPage() {
   async function deleteUpload(uploadId: string) {
     setDeletingId(uploadId)
     const sb = getClient()
-    // Delete imported transactions first
+
+    // Fetch the upload record first so we know the card + period
+    const { data: upload } = await sb.from('cartola_uploads').select('*').eq('id', uploadId).single()
+
+    // Delete cartola-imported transactions
     await sb.from('transactions').delete()
       .eq('cartola_upload_id', uploadId)
       .eq('is_from_cartola', true)
+
+    // Revert match_status on manual transactions that were matched to this cartola period
+    if (upload?.credit_card_id && upload?.period_start && upload?.period_end) {
+      await sb.from('transactions')
+        .update({ match_status: null })
+        .eq('credit_card_id', upload.credit_card_id)
+        .eq('is_from_cartola', false)
+        .eq('match_status', 'matched')
+        .gte('date', upload.period_start)
+        .lte('date', upload.period_end)
+    }
+
+    // Reset card balance fields that were set from this upload
+    if (upload?.credit_card_id) {
+      const resetField = upload.currency === 'USD' ? { balance_usd: 0 } : { balance: 0 }
+      await sb.from('credit_cards').update(resetField).eq('id', upload.credit_card_id)
+    }
+
     // Delete the upload record
     await sb.from('cartola_uploads').delete().eq('id', uploadId)
     await loadHistory()
@@ -316,13 +338,57 @@ export default function CartolasPage() {
 
       await sb.from('cartola_uploads').update({ status: 'procesada', matched_count: confirmed.length }).eq('id', uploadId)
 
-      // Update card balance with the cartola total (Monto Total Facturado a Pagar)
-      // USD cartolas update balance_usd; CLP cartolas update balance
-      if (snap.totalAmount > 0) {
-        const balanceField = snap.currency === 'USD'
-          ? { balance_usd: snap.totalAmount }
-          : { balance: snap.totalAmount }
-        await sb.from('credit_cards').update(balanceField).eq('id', selectedCard)
+      // Update card balance:
+      //   balance     = cupoUtilizado (deuda total real) if available, else totalAmount
+      //   balance_usd = cupoUtilizado for USD cartolas
+      // totalAmount (monto a pagar del período) is preserved in cartola_uploads.total_amount
+      const balanceUpdate: Record<string, number> = {}
+      if (snap.currency === 'USD') {
+        if (snap.cupoUtilizado != null && snap.cupoUtilizado > 0)
+          balanceUpdate.balance_usd = snap.cupoUtilizado
+        else if (snap.totalAmount > 0)
+          balanceUpdate.balance_usd = snap.totalAmount
+      } else {
+        if (snap.cupoUtilizado != null && snap.cupoUtilizado > 0)
+          balanceUpdate.balance = snap.cupoUtilizado
+        else if (snap.totalAmount > 0)
+          balanceUpdate.balance = snap.totalAmount
+      }
+      if (Object.keys(balanceUpdate).length > 0) {
+        await sb.from('credit_cards').update(balanceUpdate).eq('id', selectedCard)
+      }
+
+      // Auto-create "Cuotas período anterior" apertura transaction
+      // Represents the portion of cupoUtilizado not traceable to individual transactions
+      // = cupoUtilizado - totalAmount (the pre-existing debt from previous periods)
+      if (snap.currency !== 'USD' && snap.cupoUtilizado != null && snap.cupoUtilizado > snap.totalAmount) {
+        const aperturaAmount = Math.round(snap.cupoUtilizado - snap.totalAmount)
+        const aperturaDate = snap.periodStart
+          ? snap.periodStart.toISOString().split('T')[0]
+          : snap.periodEnd
+            ? new Date(snap.periodEnd.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+            : new Date().toISOString().split('T')[0]
+
+        // Remove any previous apertura for this card+period to avoid duplicates
+        await sb.from('transactions')
+          .delete()
+          .eq('credit_card_id', selectedCard)
+          .eq('category', 'apertura')
+          .eq('date', aperturaDate)
+
+        await sb.from('transactions').insert({
+          user_id: user.id,
+          amount: aperturaAmount,
+          currency: 'CLP',
+          type: 'expense',
+          category: 'apertura',
+          description: 'Cuotas período anterior (no trazable)',
+          date: aperturaDate,
+          credit_card_id: selectedCard,
+          is_from_cartola: true,
+          match_status: 'matched',
+          cartola_upload_id: uploadId,
+        })
       }
 
       setStep('done')

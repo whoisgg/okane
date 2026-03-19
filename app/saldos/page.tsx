@@ -95,6 +95,25 @@ export default function SaldosPage() {
   const [tab, setTab]                   = useState<'facturado' | 'sin-facturar'>('sin-facturar')
   const [selectedCurrency, setSelectedCurrency] = useState<'CLP' | 'USD'>('CLP')
   const [loading, setLoading]           = useState(true)
+
+  // Balance editing
+  const [editingBalance, setEditingBalance] = useState(false)
+  const [balanceInput, setBalanceInput]     = useState('')
+  const [savingBalance, setSavingBalance]   = useState(false)
+
+  async function saveBalance(itemId: string, isCard: boolean) {
+    const raw = balanceInput.replace(/\./g, '').replace(',', '.')
+    const val = parseFloat(raw)
+    if (isNaN(val) || val < 0) return
+    setSavingBalance(true)
+    const sb = getClient()
+    const field = isCard ? 'balance' : 'balance'
+    await sb.from(isCard ? 'credit_cards' : 'bank_accounts').update({ [field]: val }).eq('id', itemId)
+    if (isCard) setCards(prev => prev.map(c => c.id === itemId ? { ...c, balance: val } : c))
+    else setAccounts(prev => prev.map(a => a.id === itemId ? { ...a, balance: val } : a))
+    setEditingBalance(false)
+    setSavingBalance(false)
+  }
   const scrollRef                       = useRef<HTMLDivElement>(null)
   const isDragging                      = useRef(false)
   const dragStartX                      = useRef(0)
@@ -226,15 +245,36 @@ export default function SaldosPage() {
     : tab === 'facturado' ? facturados : sinFacturar      // cards: filtered by tab
 
   // ── Month navigation ───────────────────────────────────────────────────────
+  // For credit cards with a closing day, group by billing period (not calendar month).
+  // e.g. closing_day=24 → tx on Feb 24 belongs to March billing period.
+  const closingDay = current?.type === 'card' ? (current.item as CreditCard).closing_day ?? null : null
+
+  function billingMonthKey(dateStr: string, cd: number): string {
+    const d = new Date(dateStr + 'T12:00:00')
+    const day = d.getDate()
+    const month = d.getMonth() + 1
+    const year  = d.getFullYear()
+    if (day >= cd) {
+      const nm = month === 12 ? 1 : month + 1
+      const ny = month === 12 ? year + 1 : year
+      return `${ny}-${String(nm).padStart(2, '0')}`
+    }
+    return `${year}-${String(month).padStart(2, '0')}`
+  }
+
+  function txMonthKey(t: Transaction): string {
+    return closingDay ? billingMonthKey(t.date.slice(0, 10), closingDay) : t.date.slice(0, 7)
+  }
+
   const months = Array.from(
-    new Set(displayedTxs.map(t => t.date.slice(0, 7)))
+    new Set(displayedTxs.map(txMonthKey))
   ).sort().reverse()  // newest first
 
   const [selectedMonth, setSelectedMonth] = useState<string>('')
   const activeMonth = selectedMonth && months.includes(selectedMonth)
     ? selectedMonth
     : months[0] ?? ''
-  const monthTxs = displayedTxs.filter(t => t.date.startsWith(activeMonth))
+  const monthTxs = displayedTxs.filter(t => txMonthKey(t) === activeMonth)
   const monthIdx = months.indexOf(activeMonth)
   const monthTotal = monthTxs.reduce(
     (s, t) => t.type === 'expense' ? s - Number(t.amount) : s + Number(t.amount), 0
@@ -388,9 +428,41 @@ export default function SaldosPage() {
                           {isCC ? 'Deuda actual' : 'Saldo'}
                         </p>
                         <p className="text-[10px] font-bold opacity-60 mb-0.5 tracking-wider">CLP</p>
-                        <p className="text-[22px] font-bold leading-none tracking-tight">
-                          {clpFormatted(balanceCLP)}
-                        </p>
+                        {editingBalance && allItems[selectedCard]?.item.id === item.id ? (
+                          <div className="flex items-center gap-2 mt-1">
+                            <input
+                              className="w-36 rounded-lg bg-white/20 px-2 py-1 text-sm font-bold text-white placeholder-white/50 outline-none"
+                              placeholder="Ej: 4.828.181"
+                              value={balanceInput}
+                              onChange={e => setBalanceInput(e.target.value)}
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') saveBalance(item.id, isCC)
+                                if (e.key === 'Escape') setEditingBalance(false)
+                              }}
+                              autoFocus
+                            />
+                            <button
+                              onClick={() => saveBalance(item.id, isCC)}
+                              disabled={savingBalance}
+                              className="text-xs font-bold text-white/90 hover:text-white"
+                            >
+                              {savingBalance ? '...' : '✓'}
+                            </button>
+                            <button onClick={() => setEditingBalance(false)} className="text-xs text-white/60">✕</button>
+                          </div>
+                        ) : (
+                          <div className="flex items-end gap-2">
+                            <p className="text-[22px] font-bold leading-none tracking-tight">
+                              {clpFormatted(balanceCLP)}
+                            </p>
+                            <button
+                              onClick={() => { setBalanceInput(balanceCLP.toString()); setEditingBalance(true) }}
+                              className="mb-0.5 text-[11px] text-white/50 hover:text-white/80"
+                            >
+                              ✎
+                            </button>
+                          </div>
+                        )}
                       </div>
                       {isCC && balanceUSD !== null && (
                         <>

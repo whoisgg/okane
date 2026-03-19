@@ -23,6 +23,21 @@ export default function ConfigPage() {
   const [loading, setLoading]     = useState(true)
   const [signingOut, setSigningOut] = useState(false)
 
+  // Bank account editing
+  const [editingAccountId, setEditingAccountId] = useState<string | null>(null)
+  const [editingAccountName, setEditingAccountName] = useState('')
+  const [savingAccount, setSavingAccount] = useState(false)
+
+  async function saveAccountName(id: string) {
+    if (!editingAccountName.trim()) return
+    setSavingAccount(true)
+    const sb = getClient()
+    await sb.from('bank_accounts').update({ name: editingAccountName.trim() }).eq('id', id)
+    setAccounts(prev => prev.map(a => a.id === id ? { ...a, name: editingAccountName.trim() } : a))
+    setEditingAccountId(null)
+    setSavingAccount(false)
+  }
+
   // Budget settings
   const [budget, setBudget]         = useState('')
   const [savingsGoal, setSavingsGoal] = useState('')
@@ -269,12 +284,42 @@ export default function ConfigPage() {
             {accounts.length === 0 ? (
               <p className="px-4 py-5 text-sm text-text-muted">Sin cuentas registradas</p>
             ) : accounts.map(a => (
-              <div key={a.id} className="flex items-center justify-between px-4 py-3">
-                <div>
-                  <p className="text-sm font-medium text-text-primary">{a.name}</p>
-                  {a.bank_name && <p className="text-xs text-text-muted">{a.bank_name}</p>}
-                </div>
-                <p className="text-sm font-semibold text-success">{clpFormatted(Number(a.balance))}</p>
+              <div key={a.id} className="px-4 py-3">
+                {editingAccountId === a.id ? (
+                  <div className="flex items-center gap-2">
+                    <input
+                      className="input flex-1 text-sm"
+                      value={editingAccountName}
+                      onChange={e => setEditingAccountName(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') saveAccountName(a.id); if (e.key === 'Escape') setEditingAccountId(null) }}
+                      autoFocus
+                    />
+                    <button
+                      onClick={() => saveAccountName(a.id)}
+                      disabled={savingAccount}
+                      className="text-xs font-semibold text-accent"
+                    >
+                      {savingAccount ? '...' : 'Guardar'}
+                    </button>
+                    <button onClick={() => setEditingAccountId(null)} className="text-xs text-text-muted">✕</button>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium text-text-primary">{a.name}</p>
+                      {a.bank_name && <p className="text-xs text-text-muted">{a.bank_name}</p>}
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <p className="text-sm font-semibold text-success">{clpFormatted(Number(a.balance))}</p>
+                      <button
+                        onClick={() => { setEditingAccountId(a.id); setEditingAccountName(a.name) }}
+                        className="text-xs text-text-muted hover:text-text-primary"
+                      >
+                        ✎
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>

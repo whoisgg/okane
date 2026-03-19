@@ -332,6 +332,16 @@ function TransactionModal({ cards, subs, bankAccounts, initial, onClose, onSaved
       data = res.data as Transaction
     }
 
+    // If payment: reduce credit card balance by the payment amount
+    if (type === 'payment' && cardId) {
+      const { data: card } = await sb.from('credit_cards').select('balance').eq('id', cardId).single()
+      if (card) {
+        await sb.from('credit_cards')
+          .update({ balance: Math.max(0, Number(card.balance) - parsedAmount) })
+          .eq('id', cardId)
+      }
+    }
+
     onSaved(data!)
   }
 
@@ -390,6 +400,15 @@ function TransactionModal({ cards, subs, bankAccounts, initial, onClose, onSaved
 
           {/* Description */}
           <input className="input" placeholder="Descripción (opcional)" value={description} onChange={e => setDescription(e.target.value)} />
+
+          {/* Date */}
+          <input
+            className="input"
+            type="date"
+            value={date}
+            onChange={e => setDate(e.target.value)}
+            required
+          />
 
           {/* ── PAGO TARJETA fields ── */}
           {type === 'payment' && (
