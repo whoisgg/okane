@@ -282,7 +282,7 @@ export default function CartolasPage() {
         await sb.from('transactions').insert(cartolaOnly.map(ct => ({
           user_id: user.id,
           amount: ct.amount,
-          currency: parsed.currency ?? 'CLP',
+          currency: parsed?.currency ?? 'CLP',
           type: 'expense',
           category: subMatchedIds.has(ct.id) ? 'suscripciones' : categorizeTransaction(ct.description ?? ''),
           description: ct.description,
