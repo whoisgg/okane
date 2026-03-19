@@ -45,7 +45,7 @@ export default function DashboardPage() {
   const [subs, setSubs] = useState<Subscription[]>([])
   const [loans, setLoans] = useState<Loan[]>([])
   const [cards, setCards] = useState<CreditCard[]>([])
-  const [cardTxs, setCardTxs] = useState<{ credit_card_id: string; amount: number; date: string; is_from_cartola?: boolean; match_status?: string; currency?: string }[]>([])
+  const [cardTxs, setCardTxs] = useState<{ credit_card_id: string; amount: number; date: string; is_from_cartola?: boolean; match_status?: string; currency?: string; subscription_id?: string | null }[]>([])
   const [cartolaUploads, setCartolaUploads] = useState<{ credit_card_id: string; period_end: string; total_amount: number; currency?: string; upcoming_amounts?: { dueDate: string; amount: number }[] }[]>([])
   const [subLinkedTxs, setSubLinkedTxs] = useState<{ subscription_id: string; amount: number; date: string; credit_card_id?: string | null; currency: string }[]>([])
   const [settings, setSettings] = useState<UserSettings | null>(null)
@@ -153,7 +153,7 @@ export default function DashboardPage() {
       sb.from('loans').select('*'),
       sb.from('settings').select('*').single(),
       sb.from('credit_cards').select('*').order('created_at'),
-      sb.from('transactions').select('credit_card_id,amount,date,is_from_cartola,match_status,currency').eq('type', 'expense').not('credit_card_id', 'is', null),
+      sb.from('transactions').select('credit_card_id,amount,date,is_from_cartola,match_status,currency,subscription_id').eq('type', 'expense').not('credit_card_id', 'is', null),
       sb.from('cartola_uploads').select('credit_card_id,period_end,total_amount,currency,upcoming_amounts').eq('status', 'procesada').not('period_end', 'is', null).not('total_amount', 'is', null),
       sb.from('transactions').select('subscription_id,amount,date,credit_card_id,currency').eq('type', 'expense').eq('is_from_cartola', false).eq('match_status', 'unmatched').not('subscription_id', 'is', null),
     ])
@@ -163,7 +163,7 @@ export default function DashboardPage() {
     const loansData = (loansRes.data ?? []) as Loan[]
     const settingsData = settingsRes.data as UserSettings | null
     const cardsData = (cardsRes.data ?? []) as CreditCard[]
-    const cardTxsData = (cardTxsRes.data ?? []) as { credit_card_id: string; amount: number; date: string; is_from_cartola?: boolean; match_status?: string; currency?: string }[]
+    const cardTxsData = (cardTxsRes.data ?? []) as { credit_card_id: string; amount: number; date: string; is_from_cartola?: boolean; match_status?: string; currency?: string; subscription_id?: string | null }[]
     const uploadsData = (uploadsRes.data ?? []) as { credit_card_id: string; period_end: string; total_amount: number; currency?: string; upcoming_amounts?: { dueDate: string; amount: number }[] }[]
     const subLinkedTxsData = (subLinkedRes.data ?? []) as { subscription_id: string; amount: number; date: string; credit_card_id?: string | null; currency: string }[]
 
@@ -229,17 +229,17 @@ export default function DashboardPage() {
 
         // Annual subscriptions contribute amount/12 per month; skip if before start_date
         // Also skip if there's already a linked unmatched manual tx for this month (avoid double-count)
+        // Subs always shown in forecast; their CC txs are excluded from billingTotalUnbilled to avoid double-count
         const forecastSubs = subsData.reduce((s, sub) => {
           if (sub.start_date && forecastYM < sub.start_date.slice(0, 7)) return s
-          const hasLinkedTx = subLinkedTxsData.some(tx => tx.subscription_id === sub.id && tx.date.slice(0, 7) === forecastYM)
-          if (hasLinkedTx) return s
           const monthly = sub.billing_period === 'annual' ? Number(sub.amount) / 12 : Number(sub.amount)
           return s + monthly
         }, 0)
 
-        // Sub-linked manual txs NOT on a CC — already entered manually, not in any other bucket
+        // Sub-linked = manually entered sub payments pending cartola reconciliation (shown as "↳ Sin facturar")
+        // Not added to total — forecastSubs already includes the full sub amount
         const forecastSubsLinked = subLinkedTxsData
-          .filter(tx => tx.date.slice(0, 7) === forecastYM && !tx.credit_card_id)
+          .filter(tx => tx.date.slice(0, 7) === forecastYM)
           .reduce((s, tx) => s + Number(tx.amount), 0)
 
         // Loans: only apply within [start_date, end_date] range
@@ -323,9 +323,10 @@ export default function DashboardPage() {
         const exchangeRateSeed = settingsData?.usd_exchange_rate ?? 950
         const forecastUSDInCLP = Math.round(forecastUSDAmount * exchangeRateSeed)
 
+        // forecastSubsLinked is a visual indicator only — already included in forecastSubs, don't double-count
         const total = income > 0
-          ? Math.max(0, income - forecastSubs - forecastSubsLinked - forecastLoans - forecastCC - forecastUSDInCLP)
-          : forecastSubs + forecastSubsLinked + forecastLoans + forecastCC + forecastUSDInCLP
+          ? Math.max(0, income - forecastSubs - forecastLoans - forecastCC - forecastUSDInCLP)
+          : forecastSubs + forecastLoans + forecastCC + forecastUSDInCLP
 
         result.push({ month: m, year: y, label: shortMonthLabel(m, y), total, facturado: 0, isForecast: true, forecastIncome: income, forecastSubs, forecastSubsLinked, forecastLoans, forecastCC, forecastCCUnbilled, forecastUSDAmount, forecastUSDInCLP, forecastUSDUnbilled })
       }
@@ -427,14 +428,14 @@ export default function DashboardPage() {
               <div className="rounded-lg bg-surface-high p-4 space-y-3 text-sm">
                 <ForecastRow label="Ingresos estimados" amount={sel.forecastIncome} isIncome />
                 <hr className="border-border" />
-                <ForecastRow label="Suscripciones" amount={sel.forecastSubs + sel.forecastSubsLinked} icon="↻" />
+                <ForecastRow label="Suscripciones" amount={sel.forecastSubs} icon="↻" />
                 {sel.forecastSubsLinked > 0 && (
-                  <ForecastRow label="↳ Sin facturar" amount={sel.forecastSubsLinked} />
+                  <ForecastRow label="↳ Sin facturar" amount={sel.forecastSubsLinked} isSub />
                 )}
                 <ForecastRow label="Créditos" amount={sel.forecastLoans} icon="🏦" />
                 <ForecastRow label="Tarjetas Facturado" amount={sel.forecastCC - sel.forecastCCUnbilled} icon="💳" />
                 {sel.forecastCCUnbilled > 0 && (
-                  <ForecastRow label="↳ Sin facturar" amount={sel.forecastCCUnbilled} />
+                  <ForecastRow label="↳ Sin facturar" amount={sel.forecastCCUnbilled} isSub />
                 )}
                 {sel.forecastUSDAmount > 0 && (
                   <>
@@ -449,6 +450,7 @@ export default function DashboardPage() {
                         label="↳ Sin facturar USD"
                         amount={Math.round(sel.forecastUSDUnbilled * usdRate)}
                         inlineAnnotation={`US$ ${sel.forecastUSDUnbilled.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                        isSub
                       />
                     )}
                   </>
@@ -904,8 +906,9 @@ function billingTotal(
 }
 
 // Only counts manual, unmatched CLP transactions — used for "sin facturar" calculation
+// Excludes subscription-linked txs (already counted in forecastSubs)
 function billingTotalUnbilled(
-  txs: { credit_card_id: string; amount: number; date: string; is_from_cartola?: boolean; match_status?: string; currency?: string }[],
+  txs: { credit_card_id: string; amount: number; date: string; is_from_cartola?: boolean; match_status?: string; currency?: string; subscription_id?: string | null }[],
   cardId: string,
   closingDay: number,
   month: number,
@@ -918,6 +921,7 @@ function billingTotalUnbilled(
       if (tx.is_from_cartola) return false
       if (tx.match_status === 'matched') return false
       if ((tx.currency ?? 'CLP') === 'USD') return false   // exclude USD from CLP totals
+      if (tx.subscription_id) return false                 // already counted in forecastSubs
       const d = new Date(tx.date)
       return d >= start && d <= end
     })
@@ -945,9 +949,19 @@ function billingTotalUnbilledUSD(
     .reduce((s, tx) => s + Number(tx.amount), 0)
 }
 
-function ForecastRow({ label, amount, isIncome, icon, inlineAnnotation }: {
-  label: string; amount: number; isIncome?: boolean; icon?: string; inlineAnnotation?: string
+function ForecastRow({ label, amount, isIncome, icon, inlineAnnotation, isSub }: {
+  label: string; amount: number; isIncome?: boolean; icon?: string; inlineAnnotation?: string; isSub?: boolean
 }) {
+  if (isSub) {
+    return (
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] text-text-muted">{label}</span>
+        <span className="text-[11px] text-text-muted tabular-nums">
+          {amount > 0 ? `−${clpAbbreviated(amount)}` : '—'}
+        </span>
+      </div>
+    )
+  }
   return (
     <div className="flex items-center justify-between">
       <span className="text-text-secondary">{icon && <span className="mr-1">{icon}</span>}{label}</span>
