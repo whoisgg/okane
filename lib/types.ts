@@ -23,6 +23,7 @@ export interface Transaction {
   match_status: MatchStatus
   matched_transaction_id?: string
   cartola_upload_id?: string
+  subscription_id?: string
   created_at: string
 }
 

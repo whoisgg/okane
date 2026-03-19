@@ -5,7 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import { getClient } from '@/lib/supabase'
 import AppShell from '@/components/AppShell'
 import { clpFormatted } from '@/lib/utils'
-import type { Transaction, CreditCard } from '@/lib/types'
+import type { Transaction, CreditCard, Subscription } from '@/lib/types'
 
 const CATEGORIES = [
   'hogar','comida','salud','transporte','entretenimiento',
@@ -29,6 +29,7 @@ function TransactionsContent() {
   const searchParams = useSearchParams()
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [cards, setCards]               = useState<CreditCard[]>([])
+  const [subs, setSubs]                 = useState<Subscription[]>([])
   const [loading, setLoading]           = useState(true)
   const [search, setSearch]             = useState('')
   const [typeFilter, setTypeFilter]     = useState<'all' | 'expense' | 'income'>('all')
@@ -44,12 +45,14 @@ function TransactionsContent() {
 
   const load = useCallback(async () => {
     const sb = getClient()
-    const [txRes, cardsRes] = await Promise.all([
+    const [txRes, cardsRes, subsRes] = await Promise.all([
       sb.from('transactions').select('*').order('date', { ascending: false }).limit(200),
       sb.from('credit_cards').select('*'),
+      sb.from('subscriptions').select('id,name,amount,currency,billing_period').eq('is_active', true).order('name'),
     ])
     setTransactions((txRes.data ?? []) as Transaction[])
     setCards((cardsRes.data ?? []) as CreditCard[])
+    setSubs((subsRes.data ?? []) as Subscription[])
     setLoading(false)
   }, [])
 
@@ -187,6 +190,7 @@ function TransactionsContent() {
         {showAdd && (
           <TransactionModal
             cards={cards}
+            subs={subs}
             onClose={() => setShowAdd(false)}
             onSaved={(tx) => { setTransactions(prev => [tx, ...prev]); setShowAdd(false) }}
           />
@@ -196,6 +200,7 @@ function TransactionsContent() {
         {editing && (
           <TransactionModal
             cards={cards}
+            subs={subs}
             initial={editing}
             onClose={() => setEditing(null)}
             onSaved={(tx) => {
@@ -211,8 +216,9 @@ function TransactionsContent() {
 
 // ── Unified Add / Edit modal ───────────────────────────────────────────────
 
-function TransactionModal({ cards, initial, onClose, onSaved }: {
+function TransactionModal({ cards, subs, initial, onClose, onSaved }: {
   cards: CreditCard[]
+  subs: Subscription[]
   initial?: Transaction
   onClose: () => void
   onSaved: (tx: Transaction) => void
@@ -239,6 +245,8 @@ function TransactionModal({ cards, initial, onClose, onSaved }: {
   const [cardId, setCardId]               = useState(initial?.credit_card_id ?? '')
   const [isInstallment, setIsInstallment] = useState(initial?.is_installment ?? false)
   const [installmentTotal, setInstallmentTotal] = useState(String(initial?.installment_total ?? ''))
+  const [isSubLinked, setIsSubLinked]     = useState(!!(initial?.subscription_id))
+  const [subscriptionId, setSubscriptionId] = useState(initial?.subscription_id ?? '')
   const [saving, setSaving]               = useState(false)
   const [error, setError]                 = useState('')
 
@@ -275,6 +283,7 @@ function TransactionModal({ cards, initial, onClose, onSaved }: {
       credit_card_id:    cardId || null,
       is_installment:    isInstallment,
       installment_total: isInstallment ? parseInt(installmentTotal) : null,
+      subscription_id:   (type === 'expense' && isSubLinked && subscriptionId) ? subscriptionId : null,
     }
 
     let data: Transaction | null = null
@@ -359,6 +368,27 @@ function TransactionModal({ cards, initial, onClose, onSaved }: {
             <select className="input" value={cardId} onChange={e => setCardId(e.target.value)}>
               <option value="">Sin tarjeta</option>
               {cards.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          )}
+
+          {/* Subscription link */}
+          {type === 'expense' && (
+            <label className="flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={isSubLinked} onChange={e => {
+                setIsSubLinked(e.target.checked)
+                if (!e.target.checked) setSubscriptionId('')
+              }} />
+              <span className="text-text-secondary">Es una suscripción</span>
+            </label>
+          )}
+          {type === 'expense' && isSubLinked && subs.length > 0 && (
+            <select className="input" value={subscriptionId} onChange={e => setSubscriptionId(e.target.value)}>
+              <option value="">Selecciona suscripción...</option>
+              {subs.map(s => (
+                <option key={s.id} value={s.id}>
+                  {s.name} — {Number(s.amount).toLocaleString('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 })}
+                </option>
+              ))}
             </select>
           )}
 

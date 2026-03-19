@@ -28,6 +28,7 @@ interface MonthData {
   isForecast: boolean
   forecastIncome: number
   forecastSubs: number
+  forecastSubsLinked: number   // sub-linked manual txs NOT on a CC (already entered, not double-counted)
   forecastLoans: number
   forecastCC: number           // total CLP = billed + unbilled
   forecastCCUnbilled: number   // manual unmatched transactions in billing period
@@ -46,6 +47,7 @@ export default function DashboardPage() {
   const [cards, setCards] = useState<CreditCard[]>([])
   const [cardTxs, setCardTxs] = useState<{ credit_card_id: string; amount: number; date: string; is_from_cartola?: boolean; match_status?: string; currency?: string }[]>([])
   const [cartolaUploads, setCartolaUploads] = useState<{ credit_card_id: string; period_end: string; total_amount: number; currency?: string; upcoming_amounts?: { dueDate: string; amount: number }[] }[]>([])
+  const [subLinkedTxs, setSubLinkedTxs] = useState<{ subscription_id: string; amount: number; date: string; credit_card_id?: string | null; currency: string }[]>([])
   const [settings, setSettings] = useState<UserSettings | null>(null)
 
   // ── Add subscription ────────────────────────────────────────────────────────
@@ -145,7 +147,7 @@ export default function DashboardPage() {
     } catch { /* use default 950 if API fails */ }
 
     // Parallel fetch
-    const [txRes, subsRes, loansRes, settingsRes, cardsRes, cardTxsRes, uploadsRes] = await Promise.all([
+    const [txRes, subsRes, loansRes, settingsRes, cardsRes, cardTxsRes, uploadsRes, subLinkedRes] = await Promise.all([
       sb.from('transactions').select('amount,currency,date,is_from_cartola,credit_card_id').eq('type', 'expense'),
       sb.from('subscriptions').select('*').eq('is_active', true),
       sb.from('loans').select('*'),
@@ -153,6 +155,7 @@ export default function DashboardPage() {
       sb.from('credit_cards').select('*').order('created_at'),
       sb.from('transactions').select('credit_card_id,amount,date,is_from_cartola,match_status,currency').eq('type', 'expense').not('credit_card_id', 'is', null),
       sb.from('cartola_uploads').select('credit_card_id,period_end,total_amount,currency,upcoming_amounts').eq('status', 'procesada').not('period_end', 'is', null).not('total_amount', 'is', null),
+      sb.from('transactions').select('subscription_id,amount,date,credit_card_id,currency').eq('type', 'expense').eq('is_from_cartola', false).eq('match_status', 'unmatched').not('subscription_id', 'is', null),
     ])
 
     const txRows = txRes.data ?? []
@@ -162,12 +165,14 @@ export default function DashboardPage() {
     const cardsData = (cardsRes.data ?? []) as CreditCard[]
     const cardTxsData = (cardTxsRes.data ?? []) as { credit_card_id: string; amount: number; date: string; is_from_cartola?: boolean; match_status?: string; currency?: string }[]
     const uploadsData = (uploadsRes.data ?? []) as { credit_card_id: string; period_end: string; total_amount: number; currency?: string; upcoming_amounts?: { dueDate: string; amount: number }[] }[]
+    const subLinkedTxsData = (subLinkedRes.data ?? []) as { subscription_id: string; amount: number; date: string; credit_card_id?: string | null; currency: string }[]
 
     setSubs(subsData)
     setLoans(loansData)
     setCards(cardsData)
     setCardTxs(cardTxsData)
     setCartolaUploads(uploadsData)
+    setSubLinkedTxs(subLinkedTxsData)
     setSettings(settingsData)
     // Seed exchange rate from DB if live API hasn't responded yet
     if (settingsData?.usd_exchange_rate && settingsData.usd_exchange_rate > 0) {
@@ -217,17 +222,25 @@ export default function DashboardPage() {
           })
           .reduce((s: number, tx: any) => s + Number(tx.amount), 0)
 
-        result.push({ month: m, year: y, label: shortMonthLabel(m, y), total, facturado, isForecast: false, forecastIncome: 0, forecastSubs: 0, forecastLoans: 0, forecastCC: 0, forecastCCUnbilled: 0, forecastUSDAmount: 0, forecastUSDInCLP: 0, forecastUSDUnbilled: 0 })
+        result.push({ month: m, year: y, label: shortMonthLabel(m, y), total, facturado, isForecast: false, forecastIncome: 0, forecastSubs: 0, forecastSubsLinked: 0, forecastLoans: 0, forecastCC: 0, forecastCCUnbilled: 0, forecastUSDAmount: 0, forecastUSDInCLP: 0, forecastUSDUnbilled: 0 })
       } else {
         const income = settingsData?.monthly_budget ?? 0
         const forecastYM = `${y}-${String(m).padStart(2, '0')}`
 
         // Annual subscriptions contribute amount/12 per month; skip if before start_date
+        // Also skip if there's already a linked unmatched manual tx for this month (avoid double-count)
         const forecastSubs = subsData.reduce((s, sub) => {
           if (sub.start_date && forecastYM < sub.start_date.slice(0, 7)) return s
+          const hasLinkedTx = subLinkedTxsData.some(tx => tx.subscription_id === sub.id && tx.date.slice(0, 7) === forecastYM)
+          if (hasLinkedTx) return s
           const monthly = sub.billing_period === 'annual' ? Number(sub.amount) / 12 : Number(sub.amount)
           return s + monthly
         }, 0)
+
+        // Sub-linked manual txs NOT on a CC — already entered manually, not in any other bucket
+        const forecastSubsLinked = subLinkedTxsData
+          .filter(tx => tx.date.slice(0, 7) === forecastYM && !tx.credit_card_id)
+          .reduce((s, tx) => s + Number(tx.amount), 0)
 
         // Loans: only apply within [start_date, end_date] range
         const forecastLoans = loansData.reduce((s, l) => {
@@ -311,10 +324,10 @@ export default function DashboardPage() {
         const forecastUSDInCLP = Math.round(forecastUSDAmount * exchangeRateSeed)
 
         const total = income > 0
-          ? Math.max(0, income - forecastSubs - forecastLoans - forecastCC - forecastUSDInCLP)
-          : forecastSubs + forecastLoans + forecastCC + forecastUSDInCLP
+          ? Math.max(0, income - forecastSubs - forecastSubsLinked - forecastLoans - forecastCC - forecastUSDInCLP)
+          : forecastSubs + forecastSubsLinked + forecastLoans + forecastCC + forecastUSDInCLP
 
-        result.push({ month: m, year: y, label: shortMonthLabel(m, y), total, facturado: 0, isForecast: true, forecastIncome: income, forecastSubs, forecastLoans, forecastCC, forecastCCUnbilled, forecastUSDAmount, forecastUSDInCLP, forecastUSDUnbilled })
+        result.push({ month: m, year: y, label: shortMonthLabel(m, y), total, facturado: 0, isForecast: true, forecastIncome: income, forecastSubs, forecastSubsLinked, forecastLoans, forecastCC, forecastCCUnbilled, forecastUSDAmount, forecastUSDInCLP, forecastUSDUnbilled })
       }
     }
 
@@ -414,7 +427,10 @@ export default function DashboardPage() {
               <div className="rounded-lg bg-surface-high p-4 space-y-3 text-sm">
                 <ForecastRow label="Ingresos estimados" amount={sel.forecastIncome} isIncome />
                 <hr className="border-border" />
-                <ForecastRow label="Suscripciones" amount={sel.forecastSubs} icon="↻" />
+                <ForecastRow label="Suscripciones" amount={sel.forecastSubs + sel.forecastSubsLinked} icon="↻" />
+                {sel.forecastSubsLinked > 0 && (
+                  <ForecastRow label="↳ Sin facturar" amount={sel.forecastSubsLinked} />
+                )}
                 <ForecastRow label="Créditos" amount={sel.forecastLoans} icon="🏦" />
                 <ForecastRow label="Tarjetas Facturado" amount={sel.forecastCC - sel.forecastCCUnbilled} icon="💳" />
                 {sel.forecastCCUnbilled > 0 && (
@@ -469,15 +485,24 @@ export default function DashboardPage() {
                   <span className="text-sm text-text-secondary">Total mensual</span>
                   <span className="font-bold text-text-primary">{clpFormatted(subsTotal)}</span>
                 </div>
-                {subs.map(sub => (
-                  <div key={sub.id} className="flex items-center justify-between rounded-lg bg-surface-high px-3 py-2.5">
-                    <div>
-                      <p className="text-sm font-medium text-text-primary">{sub.name}</p>
-                      <p className="text-xs text-text-muted">Día {sub.billing_day}</p>
+                {subs.map(sub => {
+                  const nowYM = (() => { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}` })()
+                  const linkedTx = subLinkedTxs.find(tx => tx.subscription_id === sub.id && tx.date.slice(0, 7) === nowYM)
+                  return (
+                    <div key={sub.id} className="flex items-center justify-between rounded-lg bg-surface-high px-3 py-2.5">
+                      <div>
+                        <p className="text-sm font-medium text-text-primary">{sub.name}</p>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <p className="text-xs text-text-muted">Día {sub.billing_day}</p>
+                          {linkedTx && (
+                            <span className="inline-flex items-center rounded-full bg-warning/10 px-1.5 py-0.5 text-[10px] font-medium text-warning">sin facturar</span>
+                          )}
+                        </div>
+                      </div>
+                      <span className="text-sm font-semibold text-text-primary">{clpFormatted(Number(sub.amount))}</span>
                     </div>
-                    <span className="text-sm font-semibold text-text-primary">{clpFormatted(Number(sub.amount))}</span>
-                  </div>
-                ))}
+                  )
+                })}
 
                 <Link href="/suscripciones" className="flex items-center justify-end gap-1 text-xs text-accent hover:underline">
                   Ver todas →
