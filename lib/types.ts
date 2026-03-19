@@ -74,6 +74,7 @@ export interface Subscription {
   category: string
   billing_day: number
   billing_period: 'monthly' | 'annual'  // 'monthly' = mensual, 'annual' = anual
+  start_date?: string   // YYYY-MM-01 — month from which the subscription applies
   credit_card_id?: string
   is_active: boolean
   created_at: string

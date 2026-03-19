@@ -24,7 +24,8 @@ function monthlyAmount(sub: Subscription): number {
 }
 
 const CATEGORIES = ['Streaming', 'Música', 'Software', 'Salud', 'Educación', 'Noticias', 'Otro']
-const EMPTY = { name: '', amount: '', day: '', category: 'Otro', currency: 'CLP' as 'CLP' | 'USD', billing_period: 'monthly' as 'monthly' | 'annual' }
+const thisMonth = () => { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}` }
+const EMPTY = { name: '', amount: '', day: '', category: 'Otro', currency: 'CLP' as 'CLP' | 'USD', billing_period: 'monthly' as 'monthly' | 'annual', start_date: thisMonth() }
 
 export default function SuscripcionesPage() {
   const [subs, setSubs]         = useState<Subscription[]>([])
@@ -62,6 +63,7 @@ export default function SuscripcionesPage() {
       billing_period: form.billing_period,
       category:       form.category.toLowerCase(),
       is_active:      true,
+      start_date:     form.start_date ? form.start_date + '-01' : null,
     })
     if (err) { setError(err.message); setSaving(false); return }
     setForm(EMPTY); setShowForm(false); setSaving(false)
@@ -78,6 +80,7 @@ export default function SuscripcionesPage() {
       currency:       editForm.currency,
       billing_period: editForm.billing_period,
       category:       editForm.category.toLowerCase(),
+      start_date:     editForm.start_date ? editForm.start_date + '-01' : null,
     }).eq('id', id)
     if (err) { setError(err.message); setSaving(false); return }
     setEditingId(null); setSaving(false)
@@ -94,6 +97,7 @@ export default function SuscripcionesPage() {
       category:       CATEGORIES.find(c => c.toLowerCase() === sub.category) ?? 'Otro',
       currency:       (sub.currency ?? 'CLP') as 'CLP' | 'USD',
       billing_period: sub.billing_period ?? 'monthly',
+      start_date:     sub.start_date ? sub.start_date.slice(0, 7) : thisMonth(),
     })
     setEditingId(sub.id)
   }
@@ -250,7 +254,7 @@ export default function SuscripcionesPage() {
 }
 
 // ── Shared form component ─────────────────────────────────────────────────────
-type FormState = { name: string; amount: string; day: string; category: string; currency: 'CLP' | 'USD'; billing_period: 'monthly' | 'annual' }
+type FormState = { name: string; amount: string; day: string; category: string; currency: 'CLP' | 'USD'; billing_period: 'monthly' | 'annual'; start_date: string }
 
 function SubForm({ form, setForm, onSave, onCancel, saving, error, title, compact }: {
   form: FormState
@@ -346,6 +350,14 @@ function SubForm({ form, setForm, onSave, onCancel, saving, error, title, compac
             value={form.day}
             onChange={e => setForm(p => ({ ...p, day: e.target.value.replace(/\D/g, '') }))} />
         </div>
+      </div>
+
+      {/* Start date */}
+      <div className="flex items-center gap-3">
+        <label className="text-xs text-text-secondary whitespace-nowrap">Desde</label>
+        <input type="month" className="input flex-1 text-sm"
+          value={form.start_date}
+          onChange={e => setForm(p => ({ ...p, start_date: e.target.value }))} />
       </div>
 
       {error && <p className="text-sm text-danger">{error}</p>}

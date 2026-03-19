@@ -52,9 +52,12 @@ export default function DashboardPage() {
   const [showAddSub, setShowAddSub] = useState(false)
   const [subName, setSubName]       = useState('')
   const [subAmount, setSubAmount]   = useState('')
-  const [subDay, setSubDay]         = useState('')
-  const [subCurrency, setSubCurrency] = useState<'CLP' | 'USD'>('CLP')
-  const [savingSub, setSavingSub]   = useState(false)
+  const [subDay, setSubDay]               = useState('')
+  const [subCurrency, setSubCurrency]     = useState<'CLP' | 'USD'>('CLP')
+  const [subStartDate, setSubStartDate]   = useState(() => {
+    const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}`
+  })
+  const [savingSub, setSavingSub]         = useState(false)
 
   async function saveSub() {
     if (!subName.trim() || !subAmount) return
@@ -72,8 +75,10 @@ export default function DashboardPage() {
       currency:    subCurrency,
       category:    'suscripciones',
       is_active:   true,
+      start_date:  subStartDate + '-01',
     })
     setSubName(''); setSubAmount(''); setSubDay(''); setSubCurrency('CLP')
+    setSubStartDate((() => { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}` })())
     setShowAddSub(false); setSavingSub(false)
     load()
   }
@@ -86,6 +91,10 @@ export default function DashboardPage() {
   const [loanPayment, setLoanPayment]       = useState('')
   const [loanBalance, setLoanBalance]       = useState('')
   const [loanRate, setLoanRate]             = useState('')
+  const [loanStartDate, setLoanStartDate]   = useState(() => {
+    const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}`
+  })
+  const [loanEndDate, setLoanEndDate]       = useState('')
   const [savingLoan, setSavingLoan]         = useState(false)
 
   async function saveLoan() {
@@ -103,10 +112,11 @@ export default function DashboardPage() {
       remaining_balance: parse(loanBalance) || parse(loanTotal) || parse(loanPayment),
       monthly_payment:   parse(loanPayment),
       interest_rate:     loanRate ? parseFloat(loanRate) : 0,
-      start_date:        new Date().toISOString().split('T')[0],
+      start_date:        loanStartDate + '-01',
+      end_date:          loanEndDate ? loanEndDate + '-01' : null,
     })
     setLoanName(''); setLoanLender(''); setLoanTotal('')
-    setLoanPayment(''); setLoanBalance(''); setLoanRate('')
+    setLoanPayment(''); setLoanBalance(''); setLoanRate(''); setLoanEndDate('')
     setShowAddLoan(false); setSavingLoan(false)
     load()
   }
@@ -210,12 +220,21 @@ export default function DashboardPage() {
         result.push({ month: m, year: y, label: shortMonthLabel(m, y), total, facturado, isForecast: false, forecastIncome: 0, forecastSubs: 0, forecastLoans: 0, forecastCC: 0, forecastCCUnbilled: 0, forecastUSDAmount: 0, forecastUSDInCLP: 0, forecastUSDUnbilled: 0 })
       } else {
         const income = settingsData?.monthly_budget ?? 0
-        // Annual subscriptions contribute amount/12 per month
+        const forecastYM = `${y}-${String(m).padStart(2, '0')}`
+
+        // Annual subscriptions contribute amount/12 per month; skip if before start_date
         const forecastSubs = subsData.reduce((s, sub) => {
+          if (sub.start_date && forecastYM < sub.start_date.slice(0, 7)) return s
           const monthly = sub.billing_period === 'annual' ? Number(sub.amount) / 12 : Number(sub.amount)
           return s + monthly
         }, 0)
-        const forecastLoans = loansData.reduce((s, l) => s + Number(l.monthly_payment), 0)
+
+        // Loans: only apply within [start_date, end_date] range
+        const forecastLoans = loansData.reduce((s, l) => {
+          if (l.start_date && forecastYM < l.start_date.slice(0, 7)) return s
+          if (l.end_date && forecastYM > l.end_date.slice(0, 7)) return s
+          return s + Number(l.monthly_payment)
+        }, 0)
 
         // CC forecast: billed from exact cartola (if available) or upcoming_amounts; unbilled from manual txs
         let forecastCCBilled = 0
@@ -488,6 +507,10 @@ export default function DashboardPage() {
                       </div>
                       <input className="input" placeholder="Día cobro" inputMode="numeric" maxLength={2} value={subDay} onChange={e => setSubDay(e.target.value.replace(/\D/g, ''))} />
                     </div>
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs text-text-secondary whitespace-nowrap">Desde</label>
+                      <input type="month" className="input flex-1 text-sm" value={subStartDate} onChange={e => setSubStartDate(e.target.value)} />
+                    </div>
                     <div className="flex gap-2">
                       <button onClick={() => setShowAddSub(false)} className="btn-secondary flex-1">Cancelar</button>
                       <button onClick={saveSub} disabled={savingSub || !subName || !subAmount} className="btn-primary flex-1 disabled:opacity-40">
@@ -554,6 +577,16 @@ export default function DashboardPage() {
                       <div className="relative">
                         <input className="input w-full pr-6" placeholder="Tasa % (opcional)" inputMode="decimal" value={loanRate} onChange={e => setLoanRate(e.target.value)} />
                         <span className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary text-sm">%</span>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs text-text-secondary whitespace-nowrap">Desde</label>
+                        <input type="month" className="input flex-1 text-sm" value={loanStartDate} onChange={e => setLoanStartDate(e.target.value)} />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs text-text-secondary whitespace-nowrap">Hasta</label>
+                        <input type="month" className="input flex-1 text-sm" value={loanEndDate} onChange={e => setLoanEndDate(e.target.value)} placeholder="Indefinido" />
                       </div>
                     </div>
                     <div className="flex gap-2">
