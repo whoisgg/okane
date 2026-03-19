@@ -265,7 +265,7 @@ export default function CartolasPage() {
   }
 
   async function confirm() {
-    if (!uploadId || !selectedCard) return
+    if (!uploadId || !selectedCard || !parsed) return
     setLoading(true)
     setError('')
     try {
