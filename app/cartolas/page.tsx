@@ -236,7 +236,6 @@ export default function CartolasPage() {
       }
 
       // Match remaining cartola transactions against active subscriptions by name + amount
-      // Note: we do NOT add to usedCartola so they still appear in cartolaOnly and get imported
       const subMatched = new Set<string>()
       for (const ct of parsed.transactions) {
         if (usedCartola.has(ct.id)) continue
@@ -244,9 +243,25 @@ export default function CartolasPage() {
         for (const sub of activeSubs) {
           const subNameLower = sub.name.toLowerCase()
           const nameMatch = descLower.includes(subNameLower) || subNameLower.includes(descLower.split(' ')[0])
-          const amountMatch = Math.abs(Number(sub.amount) - ct.amount) < ct.amount * 0.05  // within 5%
+          const amountMatch = Math.abs(Number(sub.amount) - ct.amount) < ct.amount * 0.05
           if (nameMatch || amountMatch) {
-            subMatched.add(ct.id)
+            // Before marking as sub-import, check if there's an unmatched manual with similar description
+            // to avoid double-counting (user entered it manually before cartola arrived)
+            const relatedManual = manualTxs.find((mt: any) => {
+              if (usedManual.has(mt.id)) return false
+              const mtDesc = (mt.description ?? mt.category ?? '').toLowerCase()
+              // Name overlap: any word >3 chars from cartola desc appears in manual desc, or sub name
+              const words = descLower.split(/\s+/).filter((w: string) => w.length > 3)
+              return words.some((w: string) => mtDesc.includes(w)) || mtDesc.includes(subNameLower)
+            })
+            if (relatedManual) {
+              // Pair them instead of importing as new — prevents duplicate
+              pairs.push({ id: `${relatedManual.id}-${ct.id}`, manual: relatedManual, cartola: ct, confidence: 'medium' })
+              usedManual.add(relatedManual.id)
+              usedCartola.add(ct.id)
+            } else {
+              subMatched.add(ct.id)
+            }
             break
           }
         }
