@@ -66,9 +66,10 @@ function CatIcon({ cat, className = 'h-5 w-5' }: { cat: string; className?: stri
 
   if (k === 'comida') return (
     <svg className={className} viewBox="0 0 24 24" {...s}>
-      <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/>
-      <line x1="3" y1="6" x2="21" y2="6"/>
-      <path d="M16 10a4 4 0 01-8 0"/>
+      {/* fork */}
+      <path d="M8 2v20M5 2v4a3 3 0 006 0V2"/>
+      {/* knife */}
+      <path d="M16 2v20M19 2c0 4-1.5 5.5-3 5.5"/>
     </svg>
   )
   if (k === 'transporte') return (
@@ -124,7 +125,14 @@ function CatIcon({ cat, className = 'h-5 w-5' }: { cat: string; className?: stri
       <path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/>
     </svg>
   )
-  // otros / fallback → grid dots
+  if (k === 'otros') return (
+    <svg className={className} viewBox="0 0 24 24" {...s}>
+      <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/>
+      <line x1="3" y1="6" x2="21" y2="6"/>
+      <path d="M16 10a4 4 0 01-8 0"/>
+    </svg>
+  )
+  // fallback → dots
   return (
     <svg className={className} viewBox="0 0 24 24" {...s}>
       <circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="19" cy="12" r="1" fill="currentColor"/><circle cx="5" cy="12" r="1" fill="currentColor"/>
