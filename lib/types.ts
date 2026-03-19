@@ -73,6 +73,7 @@ export interface Subscription {
   currency: string
   category: string
   billing_day: number
+  billing_period: 'monthly' | 'annual'  // 'monthly' = mensual, 'annual' = anual
   credit_card_id?: string
   is_active: boolean
   created_at: string
@@ -105,6 +106,7 @@ export interface UserSettings {
   user_id: string
   monthly_budget: number
   savings_goal: number
+  usd_exchange_rate?: number   // CLP per 1 USD, e.g. 950
   created_at: string
 }
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, useRef, MouseEvent } from 'react'
+import { useEffect, useState, useCallback, useRef, useMemo, MouseEvent } from 'react'
 import { getClient } from '@/lib/supabase'
 import AppShell from '@/components/AppShell'
 import { clpFormatted } from '@/lib/utils'
@@ -93,6 +93,7 @@ export default function SaldosPage() {
   const [selectedCard, setSelectedCard] = useState(0)
   const [view, setView]                 = useState<'tarjetas' | 'cuentas'>('tarjetas')
   const [tab, setTab]                   = useState<'facturado' | 'sin-facturar'>('sin-facturar')
+  const [selectedCurrency, setSelectedCurrency] = useState<'CLP' | 'USD'>('CLP')
   const [loading, setLoading]           = useState(true)
   const scrollRef                       = useRef<HTMLDivElement>(null)
   const isDragging                      = useRef(false)
@@ -183,15 +184,27 @@ export default function SaldosPage() {
     setTransactions((data ?? []) as Transaction[])
   }, [])
 
-  const allItems = view === 'tarjetas'
-    ? cards.map(c => ({ type: 'card' as const, item: c }))
-    : accounts.map(a => ({ type: 'account' as const, item: a }))
+  // Memoized so the reference only changes when cards/accounts/view actually change,
+  // preventing spurious useEffect re-runs that would reset selectedCurrency on every render.
+  const allItems = useMemo(
+    () => view === 'tarjetas'
+      ? cards.map(c => ({ type: 'card' as const, item: c }))
+      : accounts.map(a => ({ type: 'account' as const, item: a })),
+    [view, cards, accounts]
+  )
 
   useEffect(() => { load() }, [load])
+
+  // Load transactions when selected item changes
   useEffect(() => {
     const item = allItems[selectedCard]
     if (item) loadTxs(item.item.id, item.type)
   }, [allItems, selectedCard, loadTxs])
+
+  // Reset currency tab only when switching to a different card (not on every render)
+  useEffect(() => {
+    setSelectedCurrency('CLP')
+  }, [selectedCard])
 
   // Reset carousel position when switching views
   function switchView(v: 'tarjetas' | 'cuentas') {
@@ -201,8 +214,13 @@ export default function SaldosPage() {
   }
 
   const current      = allItems[selectedCard]
-  const facturados   = transactions.filter(t => t.is_from_cartola || t.match_status === 'matched')
-  const sinFacturar  = transactions.filter(t => !t.is_from_cartola && t.match_status !== 'matched')
+
+  // Whether the current credit card has any USD transactions
+  const hasUSDTxs = current?.type === 'card' && transactions.some(t => (t.currency ?? 'CLP') === 'USD')
+  const currencyFilter = (t: Transaction) => !hasUSDTxs || (t.currency ?? 'CLP') === selectedCurrency
+
+  const facturados   = transactions.filter(t => (t.is_from_cartola || t.match_status === 'matched') && currencyFilter(t))
+  const sinFacturar  = transactions.filter(t => !t.is_from_cartola && t.match_status !== 'matched' && currencyFilter(t))
   const displayedTxs = current?.type === 'account'
     ? transactions                                        // accounts: show all
     : tab === 'facturado' ? facturados : sinFacturar      // cards: filtered by tab
@@ -451,6 +469,34 @@ export default function SaldosPage() {
         {/* Transaction section */}
         {current && (
           <div className="card overflow-hidden">
+            {/* Currency tabs — only visible when card has both CLP and USD transactions */}
+            {current.type === 'card' && hasUSDTxs && (
+              <div className="flex justify-center gap-1.5 border-b border-border px-4 py-2 bg-surface-high/30">
+                {(['CLP', 'USD'] as const).map(cur => {
+                  const count = transactions.filter(t => (t.currency ?? 'CLP') === cur).length
+                  const isActive = selectedCurrency === cur
+                  return (
+                    <button
+                      key={cur}
+                      onClick={() => { setSelectedCurrency(cur); setSelectedMonth('') }}
+                      className={`flex items-center gap-1.5 rounded-full px-3.5 py-1 text-xs font-semibold transition-all ${
+                        isActive
+                          ? cur === 'USD'
+                            ? 'bg-emerald-500 text-white shadow-sm'
+                            : 'bg-accent text-white shadow-sm'
+                          : 'text-text-muted hover:text-text-primary'
+                      }`}
+                    >
+                      {cur}
+                      <span className={`text-[10px] tabular-nums ${isActive ? 'opacity-70' : 'opacity-50'}`}>
+                        {count}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+
             {/* Credit card: facturado / sin-facturar tabs */}
             {current.type === 'card' && (
               <div className="flex border-b border-border">
@@ -492,7 +538,11 @@ export default function SaldosPage() {
                   <div className="text-center">
                     <p className="text-sm font-bold text-text-primary">{monthLabel}</p>
                     <p className={`text-xs font-semibold tabular-nums ${monthTotal < 0 ? 'text-danger' : 'text-success'}`}>
-                      {monthTotal < 0 ? '−' : '+'}{clpFormatted(Math.abs(monthTotal))}
+                      {monthTotal < 0 ? '−' : '+'}{
+                        hasUSDTxs && selectedCurrency === 'USD'
+                          ? usdFormatted(Math.abs(monthTotal))
+                          : clpFormatted(Math.abs(monthTotal))
+                      }
                       <span className="ml-1.5 font-normal text-text-muted">· {monthTxs.length} mov.</span>
                     </p>
                   </div>

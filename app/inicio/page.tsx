@@ -19,7 +19,7 @@ const CAT_LABEL: Record<string, string> = {
   educacion:      'Educación',
   tecnologia:     'Tecnología',
   viajes:         'Viajes',
-  otros:          'Otros',
+  otros:          'Compras',
 }
 
 function catLabel(c: string) { return CAT_LABEL[c] ?? c.charAt(0).toUpperCase() + c.slice(1) }
@@ -176,8 +176,10 @@ export default function InicioPage() {
 
   useEffect(() => { load() }, [load])
 
-  // Budget calculations
-  const totalSpent  = txs.reduce((s, t) => s + Number(t.amount), 0)
+  // Budget calculations — only CLP transactions count toward the budget
+  const totalSpent  = txs
+    .filter(t => (t.currency ?? 'CLP') === 'CLP')
+    .reduce((s, t) => s + Number(t.amount), 0)
   const budget      = Number(settings?.monthly_budget ?? 0)
   const savingsGoal = Number(settings?.savings_goal ?? 0)
   const disponible  = budget > 0 ? budget - totalSpent : 0
@@ -186,9 +188,10 @@ export default function InicioPage() {
   const savedSoFar  = Math.max(0, disponible)
   const savingsPct  = savingsGoal > 0 ? Math.min(100, (savedSoFar / savingsGoal) * 100) : 0
 
-  // Categories — normalize keys so legacy iOS data groups with new categories
+  // Categories — CLP transactions only; auto-categorized at cartola upload time
   const catMap: Record<string, number> = {}
   for (const tx of txs) {
+    if ((tx.currency ?? 'CLP') === 'USD') continue        // skip USD (separate currency)
     const cat = normalizeCat(tx.category ?? 'otros')
     catMap[cat] = (catMap[cat] ?? 0) + Number(tx.amount)
   }
@@ -381,9 +384,17 @@ export default function InicioPage() {
                       )}
                     </div>
                   </div>
-                  <span className="flex-shrink-0 text-sm font-bold text-danger">
-                    −{clpFormatted(Number(tx.amount))}
-                  </span>
+                  <div className="flex-shrink-0 flex flex-col items-end gap-0.5">
+                    <span className="text-sm font-bold text-danger">
+                      −{tx.currency === 'USD'
+                        ? `US$ ${Number(tx.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                        : clpFormatted(Number(tx.amount))
+                      }
+                    </span>
+                    {tx.currency === 'USD' && (
+                      <span className="text-[9px] font-bold tracking-wider bg-emerald-500/10 text-emerald-600 rounded px-1 py-px">USD</span>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>

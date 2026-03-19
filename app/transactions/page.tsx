@@ -206,9 +206,19 @@ function TransactionModal({ cards, initial, onClose, onSaved }: {
 }) {
   const isEdit = !!initial
 
-  const fmt = (n: number) => n.toLocaleString('es-CL')
+  const fmtClp = (n: number) => n.toLocaleString('es-CL')
+  const clpInput = (v: string) => v.replace(/\D/g, '').replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+  const usdInput = (v: string) => v.replace(/[^\d.]/g, '').replace(/(\.\d{0,2}).*/g, '$1')
 
-  const [amount, setAmount]               = useState(initial ? fmt(Number(initial.amount)) : '')
+  const initCurrency = (initial?.currency ?? 'CLP') as 'CLP' | 'USD'
+  const initAmount = initial
+    ? initCurrency === 'USD'
+      ? String(Number(initial.amount))
+      : fmtClp(Number(initial.amount))
+    : ''
+
+  const [currency, setCurrency]           = useState<'CLP' | 'USD'>(initCurrency)
+  const [amount, setAmount]               = useState(initAmount)
   const [description, setDescription]     = useState(initial?.description ?? '')
   const [category, setCategory]           = useState(initial?.category ?? 'otros')
   const [date, setDate]                   = useState(initial?.date ?? new Date().toISOString().split('T')[0])
@@ -219,20 +229,38 @@ function TransactionModal({ cards, initial, onClose, onSaved }: {
   const [saving, setSaving]               = useState(false)
   const [error, setError]                 = useState('')
 
+  function handleAmountChange(v: string) {
+    setAmount(currency === 'USD' ? usdInput(v) : clpInput(v))
+  }
+
+  function handleCurrencySwitch(cur: 'CLP' | 'USD') {
+    setCurrency(cur)
+    setAmount('')   // reset amount when switching to avoid garbage formatting
+  }
+
   async function save(e: React.FormEvent) {
     e.preventDefault()
     setSaving(true)
     setError('')
     const sb = getClient()
 
+    const parsedAmount = currency === 'USD'
+      ? parseFloat(amount)
+      : parseInt(amount.replace(/\./g, ''), 10)
+
+    if (!parsedAmount || parsedAmount <= 0) {
+      setError('Ingresa un monto válido'); setSaving(false); return
+    }
+
     const body: any = {
-      amount:           parseInt(amount.replace(/\D/g, ''), 10),
+      amount:            parsedAmount,
+      currency,
       type,
       category,
-      description:      description || null,
+      description:       description || null,
       date,
-      credit_card_id:   cardId || null,
-      is_installment:   isInstallment,
+      credit_card_id:    cardId || null,
+      is_installment:    isInstallment,
       installment_total: isInstallment ? parseInt(installmentTotal) : null,
     }
 
@@ -247,7 +275,6 @@ function TransactionModal({ cards, initial, onClose, onSaved }: {
       const res = await sb.from('transactions').insert({
         ...body,
         user_id: user.id,
-        currency: 'CLP',
         match_status: 'unmatched',
         is_from_cartola: false,
       }).select().single()
@@ -268,7 +295,7 @@ function TransactionModal({ cards, initial, onClose, onSaved }: {
           <button onClick={onClose} className="text-text-muted hover:text-text-primary">✕</button>
         </div>
         <form onSubmit={save} className="space-y-3">
-          {/* Type toggle */}
+          {/* Type + Currency toggles */}
           <div className="flex gap-2">
             {(['expense', 'income'] as const).map(t => (
               <button key={t} type="button" onClick={() => setType(t)}
@@ -278,17 +305,30 @@ function TransactionModal({ cards, initial, onClose, onSaved }: {
             ))}
           </div>
 
+          {/* Currency selector */}
+          <div className="flex gap-1 rounded-lg bg-surface-high p-1">
+            {(['CLP', 'USD'] as const).map(cur => (
+              <button key={cur} type="button" onClick={() => handleCurrencySwitch(cur)}
+                className={`flex-1 rounded-md py-1 text-xs font-semibold transition ${currency === cur ? (cur === 'USD' ? 'bg-emerald-500 text-white shadow-sm' : 'bg-accent text-white shadow-sm') : 'text-text-muted hover:text-text-primary'}`}>
+                {cur}
+              </button>
+            ))}
+          </div>
+
           {/* Amount */}
-          <input
-            className="input"
-            placeholder="Monto (CLP)"
-            value={amount}
-            onChange={e => {
-              const raw = e.target.value.replace(/\D/g, '')
-              setAmount(raw ? Number(raw).toLocaleString('es-CL') : '')
-            }}
-            required
-          />
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary text-sm pointer-events-none">
+              {currency === 'USD' ? 'US$' : '$'}
+            </span>
+            <input
+              className="input pl-10"
+              placeholder={currency === 'USD' ? '0.00' : '0'}
+              value={amount}
+              inputMode={currency === 'USD' ? 'decimal' : 'numeric'}
+              onChange={e => handleAmountChange(e.target.value)}
+              required
+            />
+          </div>
 
           {/* Description */}
           <input className="input" placeholder="Descripción (opcional)" value={description} onChange={e => setDescription(e.target.value)} />

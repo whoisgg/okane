@@ -26,12 +26,13 @@ export default function ConfigPage() {
   // Budget settings
   const [budget, setBudget]         = useState('')
   const [savingsGoal, setSavingsGoal] = useState('')
+  const [usdRate, setUsdRate]       = useState('950')
   const [savingSettings, setSavingSettings] = useState(false)
   const [settingsSaved, setSettingsSaved]   = useState(false)
 
   // Category budgets
   const CATEGORIES = ['hogar','comida','salud','transporte','entretenimiento','ropa','educacion','tecnologia','viajes','otros']
-  const CAT_LABEL: Record<string,string> = { hogar:'Hogar', comida:'Comida', salud:'Salud', transporte:'Transporte', entretenimiento:'Entretención', ropa:'Ropa', educacion:'Educación', tecnologia:'Tecnología', viajes:'Viajes', otros:'Otros' }
+  const CAT_LABEL: Record<string,string> = { hogar:'Hogar', comida:'Comida', salud:'Salud', transporte:'Transporte', entretenimiento:'Entretención', ropa:'Ropa', educacion:'Educación', tecnologia:'Tecnología', viajes:'Viajes', otros:'Compras' }
   const [catLimits, setCatLimits]   = useState<Record<string,string>>({})
   const [savingCats, setSavingCats] = useState(false)
   const [catsSaved, setCatsSaved]   = useState(false)
@@ -51,6 +52,7 @@ export default function ConfigPage() {
       if (settRes.data) {
         setBudget(fmt(settRes.data.monthly_budget))
         setSavingsGoal(fmt(settRes.data.savings_goal ?? 0))
+        setUsdRate(String(settRes.data.usd_exchange_rate ?? 950))
       }
       // Build catLimits map from DB
       const map: Record<string,string> = {}
@@ -97,6 +99,7 @@ export default function ConfigPage() {
       user_id: user.id,
       monthly_budget: parse(budget),
       savings_goal: parse(savingsGoal),
+      usd_exchange_rate: parse(usdRate) || 950,
     }, { onConflict: 'user_id' })
     setSavingSettings(false)
     setSettingsSaved(true)
@@ -153,6 +156,22 @@ export default function ConfigPage() {
                     const raw = e.target.value.replace(/\D/g, '')
                     setBudget(raw ? Number(raw).toLocaleString('es-CL') : '')
                   }}
+                />
+              </div>
+            </div>
+            <div className="flex items-center justify-between px-4 py-3">
+              <div>
+                <label className="text-sm text-text-primary">Tipo de cambio USD</label>
+                <p className="text-xs text-text-muted">Pesos por 1 dólar (para flujo estimado)</p>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="text-xs text-text-muted">$</span>
+                <input
+                  className="w-32 rounded-lg bg-surface-high px-2 py-1 text-right text-sm font-semibold text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+                  placeholder="950"
+                  inputMode="numeric"
+                  value={usdRate}
+                  onChange={e => setUsdRate(e.target.value.replace(/\D/g, ''))}
                 />
               </div>
             </div>

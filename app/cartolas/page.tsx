@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { getClient } from '@/lib/supabase'
 import AppShell from '@/components/AppShell'
-import { clpFormatted } from '@/lib/utils'
+import { clpFormatted, categorizeTransaction } from '@/lib/utils'
 import type { CartolaParseResult, CartolaTransaction, CreditCard, BankType } from '@/lib/types'
 
 // ── Supported banks ────────────────────────────────────────────────────────────
@@ -64,6 +64,7 @@ export default function CartolasPage() {
   const [dupWarning, setDupWarning]         = useState<{ periodStart: string; periodEnd: string; uploadedAt: string } | null>(null)
   const [history, setHistory]               = useState<UploadHistory[]>([])
   const [deletingId, setDeletingId]         = useState<string | null>(null)
+  const [subMatchedIds, setSubMatchedIds]   = useState<Set<string>>(new Set())
 
   async function loadCards() {
     const sb = getClient()
@@ -212,6 +213,10 @@ export default function CartolasPage() {
         .lte('date', end.toISOString().split('T')[0])
       const manualTxs = manuals ?? []
 
+      // Fetch active subscriptions for matching
+      const { data: subsData } = await sb.from('subscriptions').select('id,name,amount,currency').eq('is_active', true)
+      const activeSubs = subsData ?? []
+
       const pairs: MatchPair[] = []
       const usedManual   = new Set<string>()
       const usedCartola  = new Set<string>()
@@ -230,6 +235,24 @@ export default function CartolasPage() {
         }
       }
 
+      // Match remaining cartola transactions against active subscriptions by name + amount
+      // Note: we do NOT add to usedCartola so they still appear in cartolaOnly and get imported
+      const subMatched = new Set<string>()
+      for (const ct of parsed.transactions) {
+        if (usedCartola.has(ct.id)) continue
+        const descLower = (ct.description ?? '').toLowerCase()
+        for (const sub of activeSubs) {
+          const subNameLower = sub.name.toLowerCase()
+          const nameMatch = descLower.includes(subNameLower) || subNameLower.includes(descLower.split(' ')[0])
+          const amountMatch = Math.abs(Number(sub.amount) - ct.amount) < ct.amount * 0.05  // within 5%
+          if (nameMatch || amountMatch) {
+            subMatched.add(ct.id)
+            break
+          }
+        }
+      }
+
+      setSubMatchedIds(subMatched)
       setMatchedPairs(pairs)
       setCartolaOnly(parsed.transactions.filter(t => !usedCartola.has(t.id)))
       setManualOnly(manualTxs.filter((t: any) => !usedManual.has(t.id)))
@@ -259,9 +282,9 @@ export default function CartolasPage() {
         await sb.from('transactions').insert(cartolaOnly.map(ct => ({
           user_id: user.id,
           amount: ct.amount,
-          currency: 'CLP',
+          currency: parsed.currency ?? 'CLP',
           type: 'expense',
-          category: 'otros',
+          category: subMatchedIds.has(ct.id) ? 'suscripciones' : categorizeTransaction(ct.description ?? ''),
           description: ct.description,
           date: ct.date.toISOString().split('T')[0],
           credit_card_id: selectedCard,
@@ -277,8 +300,12 @@ export default function CartolasPage() {
       await sb.from('cartola_uploads').update({ status: 'procesada', matched_count: confirmed.length }).eq('id', uploadId)
 
       // Update card balance with the cartola total (Monto Total Facturado a Pagar)
+      // USD cartolas update balance_usd; CLP cartolas update balance
       if (parsed.totalAmount > 0) {
-        await sb.from('credit_cards').update({ balance: parsed.totalAmount }).eq('id', selectedCard)
+        const balanceField = parsed.currency === 'USD'
+          ? { balance_usd: parsed.totalAmount }
+          : { balance: parsed.totalAmount }
+        await sb.from('credit_cards').update(balanceField).eq('id', selectedCard)
       }
 
       setStep('done')
@@ -300,6 +327,7 @@ export default function CartolasPage() {
     setManualOnly([])
     setUploadId(null)
     setDupWarning(null)
+    setSubMatchedIds(new Set())
   }
 
   return (
@@ -601,21 +629,27 @@ export default function CartolasPage() {
                   <span>↓</span> Se importarán automáticamente ({cartolaOnly.length})
                 </p>
                 <p className="text-xs text-text-muted">Sin ingreso manual pendiente — se concilian directamente</p>
-                {cartolaOnly.map(tx => (
-                  <div key={tx.id} className="flex items-center gap-3 rounded-lg bg-accent/5 px-3 py-2.5">
-                    <span className="text-accent">✓</span>
-                    <div className="flex-1 min-w-0">
-                      <p className="truncate text-sm font-medium text-text-primary">{tx.description}</p>
-                      <div className="flex items-center gap-2">
-                        <p className="text-xs text-text-muted">{tx.date.toLocaleDateString('es-CL', { day: 'numeric', month: 'short' })}</p>
-                        {tx.isInstallment && tx.installmentNumber != null && (
-                          <span className="badge bg-accent/10 text-accent text-[9px]">{tx.installmentNumber}/{tx.installmentTotal}</span>
-                        )}
+                {cartolaOnly.map(tx => {
+                  const isSub = subMatchedIds.has(tx.id)
+                  return (
+                    <div key={tx.id} className={`flex items-center gap-3 rounded-lg px-3 py-2.5 ${isSub ? 'bg-emerald-500/8' : 'bg-accent/5'}`}>
+                      <span className={isSub ? 'text-emerald-500' : 'text-accent'}>✓</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="truncate text-sm font-medium text-text-primary">{tx.description}</p>
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs text-text-muted">{tx.date.toLocaleDateString('es-CL', { day: 'numeric', month: 'short' })}</p>
+                          {tx.isInstallment && tx.installmentNumber != null && (
+                            <span className="badge bg-accent/10 text-accent text-[9px]">{tx.installmentNumber}/{tx.installmentTotal}</span>
+                          )}
+                          {isSub && (
+                            <span className="badge bg-emerald-500/15 text-emerald-600 text-[9px]">↻ Suscripción</span>
+                          )}
+                        </div>
                       </div>
+                      <span className="text-sm font-semibold text-danger">{clpFormatted(tx.amount)}</span>
                     </div>
-                    <span className="text-sm font-semibold text-danger">{clpFormatted(tx.amount)}</span>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
 
