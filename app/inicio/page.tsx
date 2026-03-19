@@ -38,7 +38,7 @@ const CAT_NORMALIZE: Record<string, string> = {
   // salud
   health: 'salud', farmacia: 'salud',
   // hogar
-  utilities: 'hogar', servicios: 'hogar',
+  utilities: 'hogar',
   // ropa
   shopping: 'ropa', compras: 'ropa', vestuario: 'ropa',
   // educacion
@@ -50,10 +50,10 @@ const CAT_NORMALIZE: Record<string, string> = {
   // otros
   other: 'otros', otro: 'otros',
   savings: 'otros', ahorro: 'otros',
-  subscriptions: 'otros', suscripciones: 'otros',
-  suscripcion: 'otros', suscripción: 'otros',
+  subscriptions: 'suscripciones', suscripciones: 'suscripciones',
+  suscripcion: 'suscripciones', suscripción: 'suscripciones',
   // servicios
-  services: 'servicios', servicio: 'servicios', utilities: 'servicios',
+  services: 'servicios', servicio: 'servicios', servicios: 'servicios',
 }
 function normalizeCat(c: string): string {
   return CAT_NORMALIZE[c.toLowerCase()] ?? c.toLowerCase()
