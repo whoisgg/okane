@@ -300,18 +300,13 @@ export default function DashboardPage() {
           const [, periodEnd] = billingPeriod(card.closing_day, m, y)
           const periodEndStr = periodEnd.toISOString().split('T')[0]
 
-          // 1. Exact USD cartola for this billing period
+          // Exact USD cartola for this billing period only — no carry-forward
+          // (unbilled USD transactions are captured separately in forecastUSDUnbilled)
           const usdUpload = uploadsData.find(u =>
             u.credit_card_id === card.id && u.period_end === periodEndStr && u.currency === 'USD'
           )
           if (usdUpload) {
             forecastUSDAmount += usdUpload.total_amount
-          } else {
-            // 2. Carry forward latest USD cartola total as estimate (status already filtered at fetch time)
-            const latestUSD = uploadsData
-              .filter(u => u.credit_card_id === card.id && u.currency === 'USD')
-              .sort((a, b) => b.period_end.localeCompare(a.period_end))[0]
-            if (latestUSD) forecastUSDAmount += latestUSD.total_amount
           }
         }
         // Manual unmatched USD transactions (current month only — same logic as CLP unbilled)
@@ -659,13 +654,10 @@ export default function DashboardPage() {
                         const closingDayStr = new Date(sel.year, sel.month - 1, closeDay).toISOString().split('T')[0]
                         const periodEndStrs = [periodEndStr, closingDayStr]
 
-                        // USD upload for the same card+period — if no exact match, carry forward latest
+                        // USD upload for the same card+period — exact match only, no carry-forward
                         usdUpload = cartolaUploads.find(u =>
                           u.credit_card_id === card.id && periodEndStrs.includes(u.period_end ?? '') && u.currency === 'USD'
-                        ) ?? cartolaUploads
-                          .filter(u => u.credit_card_id === card.id && u.currency === 'USD')
-                          .sort((a, b) => b.period_end.localeCompare(a.period_end))[0]
-                          ?? null
+                        ) ?? null
 
                         // 1. Exact CLP cartola match for this billing period
                         const upload = cartolaUploads.find(u =>
@@ -733,11 +725,14 @@ export default function DashboardPage() {
                       const showUploadCTA = unbilledAmount > 0 && !hasExactCartola
                       const showUSDUploadCTA = unbilledUSDAmount > 0 && !hasExactUSDCartola
 
-                      // Last payment for this card within last 60 days
+                      // Last payment for this card within the selected billing period
                       const lastPayment = (() => {
-                        const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 60)
+                        if (!closeDay) return null
+                        const [pStart, pEnd] = billingPeriod(closeDay, sel.month, sel.year)
+                        const pStartStr = pStart.toISOString().split('T')[0]
+                        const pEndStr   = pEnd.toISOString().split('T')[0]
                         return ccPayments
-                          .filter(p => p.credit_card_id === card.id && new Date(p.date) >= cutoff)
+                          .filter(p => p.credit_card_id === card.id && p.date >= pStartStr && p.date <= pEndStr)
                           .sort((a, b) => b.date.localeCompare(a.date))[0] ?? null
                       })()
                       const paymentDaysAgo = lastPayment
