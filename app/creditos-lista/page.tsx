@@ -21,6 +21,7 @@ export default function CreditosPage() {
   const [loans, setLoans]     = useState<Loan[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [saving, setSaving]   = useState(false)
   const [deleting, setDeleting] = useState<string | null>(null)
   const [form, setForm]       = useState(EMPTY)
@@ -42,14 +43,37 @@ export default function CreditosPage() {
     }
   }
 
+  function numToClp(n: number) {
+    return n > 0 ? String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '.') : ''
+  }
+
+  function startEdit(loan: Loan) {
+    setEditingId(loan.id)
+    setForm({
+      name:      loan.name,
+      lender:    loan.lender ?? '',
+      payment:   numToClp(Number(loan.monthly_payment)),
+      balance:   numToClp(Number(loan.remaining_balance)),
+      total:     numToClp(Number(loan.total_amount)),
+      rate:      loan.interest_rate > 0 ? String(loan.interest_rate) : '',
+      startDate: loan.start_date ? loan.start_date.slice(0, 7) : thisMonth(),
+      endDate:   loan.end_date ? loan.end_date.slice(0, 7) : '',
+    })
+    setShowForm(true)
+    setError(null)
+  }
+
+  function cancelForm() {
+    setShowForm(false)
+    setEditingId(null)
+    setForm(EMPTY)
+  }
+
   async function save() {
     if (!form.name.trim() || !form.payment) return
     setSaving(true); setError(null)
     const sb = getClient()
-    const { data: { user } } = await sb.auth.getUser()
-    if (!user) { setError('No autenticado'); setSaving(false); return }
-    const { error: err } = await sb.from('loans').insert({
-      user_id:           user.id,
+    const payload = {
       name:              form.name.trim(),
       lender:            form.lender.trim() || form.name.trim(),
       total_amount:      parse(form.total) || parse(form.payment),
@@ -58,9 +82,17 @@ export default function CreditosPage() {
       interest_rate:     form.rate ? parseFloat(form.rate) : 0,
       start_date:        form.startDate + '-01',
       end_date:          form.endDate ? form.endDate + '-01' : null,
-    })
-    if (err) { setError(err.message); setSaving(false); return }
-    setForm(EMPTY); setShowForm(false); setSaving(false)
+    }
+    if (editingId) {
+      const { error: err } = await sb.from('loans').update(payload).eq('id', editingId)
+      if (err) { setError(err.message); setSaving(false); return }
+    } else {
+      const { data: { user } } = await sb.auth.getUser()
+      if (!user) { setError('No autenticado'); setSaving(false); return }
+      const { error: err } = await sb.from('loans').insert({ user_id: user.id, ...payload })
+      if (err) { setError(err.message); setSaving(false); return }
+    }
+    cancelForm(); setSaving(false)
     load()
   }
 
@@ -88,9 +120,11 @@ export default function CreditosPage() {
             </Link>
             <h1 className="text-xl font-bold text-text-primary">Créditos</h1>
           </div>
-          <button onClick={() => { setShowForm(true); setError(null) }} className="btn-primary text-xs px-3 py-1.5">
-            + Nuevo crédito
-          </button>
+          {!showForm && (
+            <button onClick={() => { setEditingId(null); setForm(EMPTY); setShowForm(true); setError(null) }} className="btn-primary text-xs px-3 py-1.5">
+              + Nuevo crédito
+            </button>
+          )}
         </div>
 
         {/* Summary */}
@@ -110,7 +144,7 @@ export default function CreditosPage() {
         {/* Add form */}
         {showForm && (
           <div className="card p-5 space-y-4">
-            <h2 className="font-semibold text-text-primary">Nuevo crédito</h2>
+            <h2 className="font-semibold text-text-primary">{editingId ? 'Editar crédito' : 'Nuevo crédito'}</h2>
             <input className="input w-full" placeholder="Nombre (ej. Crédito consumo BCI)" value={form.name} onChange={f('name')} />
             <input className="input w-full" placeholder="Institución (ej. BCI, Santander)" value={form.lender} onChange={f('lender')} />
             <div className="grid grid-cols-2 gap-3">
@@ -157,9 +191,9 @@ export default function CreditosPage() {
             </div>
             {error && <p className="text-sm text-danger">{error}</p>}
             <div className="flex gap-3">
-              <button onClick={() => { setShowForm(false); setForm(EMPTY) }} className="btn-secondary flex-1">Cancelar</button>
+              <button onClick={cancelForm} className="btn-secondary flex-1">Cancelar</button>
               <button onClick={save} disabled={saving || !form.name || !form.payment} className="btn-primary flex-1 disabled:opacity-40">
-                {saving ? 'Guardando…' : 'Guardar crédito'}
+                {saving ? 'Guardando…' : editingId ? 'Guardar cambios' : 'Guardar crédito'}
               </button>
             </div>
           </div>
@@ -196,15 +230,26 @@ export default function CreditosPage() {
                         {loan.end_date && ` · hasta ${loan.end_date.slice(0, 7)}`}
                       </p>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2">
                       <div className="text-right">
                         <p className="text-base font-bold text-danger">{clpFormatted(Number(loan.monthly_payment))}<span className="text-xs font-normal text-text-muted">/mes</span></p>
                         <p className="text-xs text-text-muted">saldo: {clpFormatted(Number(loan.remaining_balance))}</p>
                       </div>
                       <button
+                        onClick={() => startEdit(loan)}
+                        className="flex h-7 w-7 items-center justify-center rounded-full text-text-muted hover:bg-accent/10 hover:text-accent transition"
+                        title="Editar"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+                          <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                        </svg>
+                      </button>
+                      <button
                         onClick={() => remove(loan.id)}
                         disabled={deleting === loan.id}
                         className="flex h-7 w-7 items-center justify-center rounded-full text-text-muted hover:bg-danger/10 hover:text-danger transition disabled:opacity-40"
+                        title="Eliminar"
                       >
                         {deleting === loan.id ? '…' : '✕'}
                       </button>
