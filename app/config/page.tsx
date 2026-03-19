@@ -31,8 +31,8 @@ export default function ConfigPage() {
   const [settingsSaved, setSettingsSaved]   = useState(false)
 
   // Category budgets
-  const CATEGORIES = ['hogar','comida','salud','transporte','entretenimiento','ropa','educacion','tecnologia','viajes','otros']
-  const CAT_LABEL: Record<string,string> = { hogar:'Hogar', comida:'Comida', salud:'Salud', transporte:'Transporte', entretenimiento:'Entretención', ropa:'Ropa', educacion:'Educación', tecnologia:'Tecnología', viajes:'Viajes', otros:'Compras' }
+  const CATEGORIES = ['hogar','comida','salud','transporte','entretenimiento','ropa','educacion','tecnologia','viajes','servicios','otros']
+  const CAT_LABEL: Record<string,string> = { hogar:'Hogar', comida:'Comida', salud:'Salud', transporte:'Transporte', entretenimiento:'Entretención', ropa:'Ropa', educacion:'Educación', tecnologia:'Tecnología', viajes:'Viajes', servicios:'Servicios', otros:'Compras' }
   const [catLimits, setCatLimits]   = useState<Record<string,string>>({})
   const [savingCats, setSavingCats] = useState(false)
   const [catsSaved, setCatsSaved]   = useState(false)

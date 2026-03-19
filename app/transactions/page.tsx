@@ -9,8 +9,13 @@ import type { Transaction, CreditCard } from '@/lib/types'
 
 const CATEGORIES = [
   'hogar','comida','salud','transporte','entretenimiento',
-  'ropa','educacion','tecnologia','viajes','otros',
+  'ropa','educacion','tecnologia','viajes','servicios','otros',
 ]
+const CAT_LABEL: Record<string,string> = {
+  hogar:'Hogar', comida:'Comida', salud:'Salud', transporte:'Transporte',
+  entretenimiento:'Entretención', ropa:'Ropa', educacion:'Educación',
+  tecnologia:'Tecnología', viajes:'Viajes', servicios:'Servicios', otros:'Compras',
+}
 
 export default function TransactionsPage() {
   return (
@@ -343,7 +348,7 @@ function TransactionModal({ cards, initial, onClose, onSaved }: {
 
           {/* Category */}
           <select className="input" value={category} onChange={e => setCategory(e.target.value)}>
-            {CATEGORIES.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
+            {CATEGORIES.map(c => <option key={c} value={c}>{CAT_LABEL[c] ?? c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
           </select>
 
           {/* Date */}

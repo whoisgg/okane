@@ -19,6 +19,7 @@ const CAT_LABEL: Record<string, string> = {
   educacion:      'Educación',
   tecnologia:     'Tecnología',
   viajes:         'Viajes',
+  servicios:      'Servicios',
   otros:          'Compras',
 }
 
@@ -51,6 +52,8 @@ const CAT_NORMALIZE: Record<string, string> = {
   savings: 'otros', ahorro: 'otros',
   subscriptions: 'otros', suscripciones: 'otros',
   suscripcion: 'otros', suscripción: 'otros',
+  // servicios
+  services: 'servicios', servicio: 'servicios', utilities: 'servicios',
 }
 function normalizeCat(c: string): string {
   return CAT_NORMALIZE[c.toLowerCase()] ?? c.toLowerCase()
@@ -114,6 +117,11 @@ function CatIcon({ cat, className = 'h-5 w-5' }: { cat: string; className?: stri
     <svg className={className} viewBox="0 0 24 24" {...s}>
       <rect x="2" y="3" width="20" height="14" rx="2"/>
       <path d="M8 21h8M12 17v4"/>
+    </svg>
+  )
+  if (k === 'servicios') return (
+    <svg className={className} viewBox="0 0 24 24" {...s}>
+      <path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/>
     </svg>
   )
   // otros / fallback → grid dots
