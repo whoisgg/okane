@@ -436,13 +436,15 @@ export default function DashboardPage() {
                 {sel.forecastCCUnbilled > 0 && (
                   <ForecastRow label="↳ Sin facturar" amount={sel.forecastCCUnbilled} isSub />
                 )}
-                {sel.forecastUSDAmount > 0 && (
+                {(sel.forecastUSDAmount > 0 || sel.forecastUSDUnbilled > 0) && (
                   <>
                     <ForecastRow
                       label={`Dólar ($${usdRate.toLocaleString('es-CL')})`}
                       amount={sel.forecastUSDInCLP}
                       icon="💵"
-                      inlineAnnotation={`US$ ${sel.forecastUSDAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                      inlineAnnotation={sel.forecastUSDAmount > 0
+                        ? `US$ ${sel.forecastUSDAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                        : undefined}
                     />
                     {sel.forecastUSDUnbilled > 0 && (
                       <ForecastRow
