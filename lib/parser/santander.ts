@@ -39,6 +39,53 @@ export function parseSantander(text: string, lastFour: string): CartolaParseResu
   const totalPattern = /MONTO TOTAL FACTURADO A PAGAR[^$\n]*\n?\s*\$\s*([\d.]+)/i
   const totalAmount = parseAmount(firstMatch(totalPattern, text) ?? '0')
 
+  // ── Vencimiento Próximos 4 Meses ────────────────────────────────────────────
+  // Santander shows month names (MARZO, ABRIL…) instead of explicit dates.
+  // We find them in order of appearance, then pair with the $ amounts that follow,
+  // skipping the first amount which is "SALDO CAPITAL" (total outstanding balance).
+  const upcomingPayments: { dueDate: string; amount: number }[] = []
+  const vencIdx = text.search(/VENCIMIENTO PR[ÓO]XIMOS 4 MESES/i)
+  if (vencIdx !== -1) {
+    const section = text.slice(vencIdx, vencIdx + 600)
+
+    const MONTH_MAP: Record<string, number> = {
+      ENERO: 1, FEBRERO: 2, MARZO: 3, ABRIL: 4, MAYO: 5, JUNIO: 6,
+      JULIO: 7, AGOSTO: 8, SEPTIEMBRE: 9, OCTUBRE: 10, NOVIEMBRE: 11, DICIEMBRE: 12,
+    }
+
+    // Find each month name once (first occurrence), sort by position
+    const foundMonths: { month: number; pos: number }[] = []
+    for (const [name, num] of Object.entries(MONTH_MAP)) {
+      const idx = section.indexOf(name)
+      if (idx !== -1) foundMonths.push({ month: num, pos: idx })
+    }
+    foundMonths.sort((a, b) => a.pos - b.pos)
+
+    // Collect all $ amounts in the section
+    const amounts: number[] = []
+    const amtRe = /\$\s*([\d.]+)/g
+    let amtMatch
+    while ((amtMatch = amtRe.exec(section)) !== null) {
+      const a = parseAmount(amtMatch[1])
+      if (a > 0) amounts.push(a)
+    }
+
+    // amounts[0] = SALDO CAPITAL (skip); amounts[1..N] map to months in order
+    const baseYear  = periodEnd?.getFullYear()  ?? new Date().getFullYear()
+    const baseMonth = periodEnd ? periodEnd.getMonth() + 1 : new Date().getMonth() + 1
+
+    foundMonths.forEach((fm, i) => {
+      const amt = amounts[i + 1]  // skip SALDO CAPITAL
+      if (amt == null || amt <= 0) return
+      // If the payment month is before the billing period close month, it's next year
+      const year = fm.month < baseMonth ? baseYear + 1 : baseYear
+      upcomingPayments.push({
+        dueDate: `${year}-${String(fm.month).padStart(2, '0')}-01`,
+        amount: amt,
+      })
+    })
+  }
+
   // ── Process line by line ────────────────────────────────────────────────────
   const transactions: CartolaTransaction[] = []
   const lines = text
@@ -109,5 +156,6 @@ export function parseSantander(text: string, lastFour: string): CartolaParseResu
     periodEnd,
     totalAmount,
     transactions,
+    upcomingPayments: upcomingPayments.length > 0 ? upcomingPayments : undefined,
   }
 }
