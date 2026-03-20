@@ -435,7 +435,7 @@ export default function DashboardPage() {
               <div className="rounded-lg bg-surface-high p-4 space-y-3 text-sm">
                 <ForecastRow label="Ingresos estimados" amount={sel.forecastIncome} isIncome />
                 <hr className="border-border" />
-                <ForecastRow label="Suscripciones" amount={sel.forecastSubs} icon="↻" />
+                <ForecastRow label="Suscripciones" amount={sel.forecastSubs} icon="🔁" />
                 {sel.forecastSubsLinked > 0 && (
                   <ForecastRow label="↳ Sin facturar" amount={sel.forecastSubsLinked} isSub />
                 )}
@@ -485,7 +485,7 @@ export default function DashboardPage() {
                 className={`flex-1 py-3 text-sm font-medium transition
                   ${activeTab === tab ? 'border-b-2 border-accent text-accent' : 'text-text-secondary hover:text-text-primary'}`}
               >
-                {tab === 'tarjetas' ? '💳 Tarjetas' : tab === 'creditos' ? '🏦 Créditos' : '↻ Suscripciones'}
+                {tab === 'tarjetas' ? '💳 Tarjetas' : tab === 'creditos' ? '🏦 Créditos' : '🔁 Suscripciones'}
               </button>
             ))}
           </div>
