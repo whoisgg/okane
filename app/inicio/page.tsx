@@ -7,6 +7,7 @@ import { clpFormatted, clpAbbreviated } from '@/lib/utils'
 import type { Transaction, UserSettings, CategoryBudget } from '@/lib/types'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
+import CatIcon from '@/components/CatIcon'
 
 // ── Canonical category labels (aligned with transaction modal + config) ────────
 const CAT_LABEL: Record<string, string> = {
@@ -59,86 +60,6 @@ function normalizeCat(c: string): string {
   return CAT_NORMALIZE[c.toLowerCase()] ?? c.toLowerCase()
 }
 
-// ── Inline SVG category icons (canonical keys only — input always pre-normalized) ──
-function CatIcon({ cat, className = 'h-5 w-5' }: { cat: string; className?: string }) {
-  const k = normalizeCat(cat)
-  const s = { stroke: 'currentColor', fill: 'none', strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const }
-
-  if (k === 'comida') return (
-    <svg className={className} viewBox="0 0 24 24" {...s}>
-      {/* fork */}
-      <path d="M8 2v20M5 2v4a3 3 0 006 0V2"/>
-      {/* knife */}
-      <path d="M16 2v20M19 2c0 4-1.5 5.5-3 5.5"/>
-    </svg>
-  )
-  if (k === 'transporte') return (
-    <svg className={className} viewBox="0 0 24 24" {...s}>
-      <path d="M5 17H3a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v9a2 2 0 01-2 2h-2"/>
-      <circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/>
-      <path d="M13 3v5h5"/>
-    </svg>
-  )
-  if (k === 'entretenimiento') return (
-    <svg className={className} viewBox="0 0 24 24" {...s}>
-      <circle cx="12" cy="12" r="10"/>
-      <polygon points="10 8 16 12 10 16 10 8"/>
-    </svg>
-  )
-  if (k === 'salud') return (
-    <svg className={className} viewBox="0 0 24 24" {...s}>
-      <path d="M12 22C6.477 22 2 17.523 2 12S6.477 2 12 2s10 4.477 10 10-4.477 10-10 10z"/>
-      <path d="M12 8v8M8 12h8"/>
-    </svg>
-  )
-  if (k === 'ropa') return (
-    <svg className={className} viewBox="0 0 24 24" {...s}>
-      <path d="M6 2h12l2 20H4L6 2z"/>
-      <path d="M9 8a3 3 0 006 0"/>
-    </svg>
-  )
-  if (k === 'hogar') return (
-    <svg className={className} viewBox="0 0 24 24" {...s}>
-      <path d="M3 12L12 3l9 9"/>
-      <path d="M9 21V12h6v9M3 12v9h18v-9"/>
-    </svg>
-  )
-  if (k === 'educacion') return (
-    <svg className={className} viewBox="0 0 24 24" {...s}>
-      <path d="M2 3h6a4 4 0 014 4v14a3 3 0 00-3-3H2z"/>
-      <path d="M22 3h-6a4 4 0 00-4 4v14a3 3 0 013-3h7z"/>
-    </svg>
-  )
-  if (k === 'viajes') return (
-    <svg className={className} viewBox="0 0 24 24" {...s}>
-      <path d="M17.8 19.2L16 11l3.5-3.5C21 6 21 4 19 4s-2 1-3.5 2.5L11 10 2.8 8.2 2 9l7 3.7-2 3.6-3-.4L3 17l3.5 1 1 3.5 1.5-1-.4-3 3.6-2L16 22l.8-.8z"/>
-    </svg>
-  )
-  if (k === 'tecnologia') return (
-    <svg className={className} viewBox="0 0 24 24" {...s}>
-      <rect x="2" y="3" width="20" height="14" rx="2"/>
-      <path d="M8 21h8M12 17v4"/>
-    </svg>
-  )
-  if (k === 'servicios') return (
-    <svg className={className} viewBox="0 0 24 24" {...s}>
-      <path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/>
-    </svg>
-  )
-  if (k === 'otros') return (
-    <svg className={className} viewBox="0 0 24 24" {...s}>
-      <path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/>
-      <line x1="3" y1="6" x2="21" y2="6"/>
-      <path d="M16 10a4 4 0 01-8 0"/>
-    </svg>
-  )
-  // fallback → dots
-  return (
-    <svg className={className} viewBox="0 0 24 24" {...s}>
-      <circle cx="12" cy="12" r="1" fill="currentColor"/><circle cx="19" cy="12" r="1" fill="currentColor"/><circle cx="5" cy="12" r="1" fill="currentColor"/>
-    </svg>
-  )
-}
 
 export default function InicioPage() {
   const router = useRouter()
@@ -392,7 +313,7 @@ export default function InicioPage() {
               {recentTxs.map(tx => (
                 <div key={tx.id} className="flex items-center gap-3 px-4 py-3.5">
                   <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-accent/10 text-accent">
-                    <CatIcon cat={tx.category} className="h-5 w-5" />
+                    <CatIcon cat={normalizeCat(tx.category)} className="h-5 w-5" />
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold text-text-primary">

@@ -7,6 +7,7 @@ import AppShell from '@/components/AppShell'
 import type { CreditCard, BankAccount, CategoryBudget } from '@/lib/types'
 import { clpFormatted } from '@/lib/utils'
 import Link from 'next/link'
+import CatIcon from '@/components/CatIcon'
 
 function fmt(n: number) {
   return n > 0 ? n.toLocaleString('es-CL') : ''
@@ -48,7 +49,7 @@ export default function ConfigPage() {
   // Category budgets
   const CATEGORIES = ['hogar','comida','salud','transporte','entretenimiento','ropa','educacion','tecnologia','viajes','servicios','otros']
   const CAT_LABEL: Record<string,string> = { hogar:'Hogar', comida:'Comida', salud:'Salud', transporte:'Transporte', entretenimiento:'Entretención', ropa:'Ropa', educacion:'Educación', tecnologia:'Tecnología', viajes:'Viajes', servicios:'Servicios', otros:'Compras' }
-  const CAT_ICON: Record<string,string>  = { hogar:'🏠', comida:'🍴', salud:'💊', transporte:'🚗', entretenimiento:'🎬', ropa:'👕', educacion:'📚', tecnologia:'💻', viajes:'✈️', servicios:'⚡', otros:'🛍️' }
+
   const [catLimits, setCatLimits]   = useState<Record<string,string>>({})
   const [savingCats, setSavingCats] = useState(false)
   const [catsSaved, setCatsSaved]   = useState(false)
@@ -227,7 +228,7 @@ export default function ConfigPage() {
             {CATEGORIES.map(cat => (
               <div key={cat} className="flex items-center justify-between px-4 py-2.5">
                 <label className="flex items-center gap-2.5 text-sm text-text-primary">
-                  <span className="text-base leading-none">{CAT_ICON[cat]}</span>
+                  <span className="text-text-secondary"><CatIcon cat={cat} className="h-4 w-4" /></span>
                   {CAT_LABEL[cat]}
                 </label>
                 <div className="flex items-center gap-1">
