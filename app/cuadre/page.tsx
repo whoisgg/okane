@@ -326,6 +326,9 @@ export default function CuadrePage() {
     setXlsLoading(false)
   }
 
+  const selectedAccount = accounts.find(a => a.id === accountId)
+  const accountLabel    = selectedAccount?.name ?? 'Cuenta'
+
   const bestBalance = excelResult?.saldoActual ?? pdfResult?.saldoFinal ?? null
   const bestDate    = excelResult?.periodEnd ?? pdfResult?.periodEnd
 
@@ -421,7 +424,11 @@ export default function CuadrePage() {
             {/* ── Account selector ── */}
             <div className="card p-4 space-y-2">
               <label className="block text-sm font-medium text-text-secondary">Cuenta a cuadrar</label>
-              <select className="input w-full" value={accountId} onChange={e => setAccountId(e.target.value)}>
+              <select className="input w-full" value={accountId} onChange={e => {
+                setAccountId(e.target.value)
+                setPdfResult(null); setExcelResult(null)
+                setPdfError(''); setXlsError('')
+              }}>
                 {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
             </div>
@@ -430,7 +437,7 @@ export default function CuadrePage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <UploadZone
                 title="Cartola oficial"
-                subtitle="PDF · Santander CC"
+                subtitle={`PDF · ${accountLabel}`}
                 accept=".pdf"
                 icon="📄"
                 loading={pdfLoading}
@@ -445,7 +452,7 @@ export default function CuadrePage() {
               />
               <UploadZone
                 title="Últimos movimientos"
-                subtitle="Excel · Santander"
+                subtitle={`Excel · ${accountLabel}`}
                 accept=".xlsx,.xls"
                 icon="📊"
                 loading={xlsLoading}
