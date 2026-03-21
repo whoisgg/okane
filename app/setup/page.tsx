@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { getClient } from '@/lib/supabase'
 import type { BankType } from '@/lib/types'
@@ -29,6 +29,14 @@ export default function SetupPage() {
   const [step, setStep]     = useState(0)
   const [saving, setSaving] = useState(false)
   const [error, setError]   = useState<string | null>(null)
+
+  // Guard: redirect to login if not authenticated
+  useEffect(() => {
+    const sb = getClient()
+    sb.auth.getSession().then(({ data: { session } }) => {
+      if (!session) router.replace('/login')
+    })
+  }, [router])
 
   // Step 1 — budget
   const [budget, setBudget] = useState('')

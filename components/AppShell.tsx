@@ -13,8 +13,27 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const sb = getClient()
     sb.auth.getSession().then(({ data: { session } }) => {
-      if (!session) router.replace('/login')
-      else setLoading(false)
+      if (session) {
+        setLoading(false)
+        return
+      }
+      // No session in cache yet — could be a post-login race.
+      // Listen for auth state change before giving up.
+      const { data: { subscription } } = sb.auth.onAuthStateChange((event, s) => {
+        if (s) {
+          setLoading(false)
+          subscription.unsubscribe()
+        } else if (event === 'SIGNED_OUT' || event === 'INITIAL_SESSION') {
+          subscription.unsubscribe()
+          router.replace('/login')
+        }
+      })
+      // Safety: if nothing fires in 3s, redirect to login
+      const t = setTimeout(() => {
+        subscription.unsubscribe()
+        router.replace('/login')
+      }, 3000)
+      return () => { clearTimeout(t); subscription.unsubscribe() }
     })
   }, [router])
 

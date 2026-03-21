@@ -79,42 +79,46 @@ export default function InicioPage() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const sb = getClient()
-    const monthStart = `${monthKey}-01`
-    const nextMonth  = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 1)
-    const monthEnd   = new Date(nextMonth.getTime() - 86400000).toISOString().split('T')[0]
+    try {
+      const sb = getClient()
+      const monthStart = `${monthKey}-01`
+      const nextMonth  = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 1)
+      const monthEnd   = new Date(nextMonth.getTime() - 86400000).toISOString().split('T')[0]
 
-    const [{ data: userData }, txRes, settingsRes, catBudgetsRes] = await Promise.all([
-      sb.auth.getUser(),
-      sb.from('transactions')
-        .select('*')
-        .eq('type', 'expense')
-        .is('bank_account_id', null)   // exclude bank account movements (transfers, etc.)
-        .gte('date', monthStart)
-        .lte('date', monthEnd)
-        .order('date', { ascending: false }),
-      sb.from('settings').select('*').single(),
-      sb.from('category_budgets').select('*'),
-    ])
+      const [{ data: userData }, txRes, settingsRes, catBudgetsRes] = await Promise.all([
+        sb.auth.getUser(),
+        sb.from('transactions')
+          .select('*')
+          .eq('type', 'expense')
+          .is('bank_account_id', null)
+          .gte('date', monthStart)
+          .lte('date', monthEnd)
+          .order('date', { ascending: false }),
+        sb.from('settings').select('*').single(),
+        sb.from('category_budgets').select('*'),
+      ])
 
-    // Check auth first — unauthenticated users go to login, not setup
-    if (!userData?.user) {
-      router.replace('/login')
-      return
+      // Check auth first — unauthenticated users go to login, not setup
+      if (!userData?.user) {
+        router.replace('/login')
+        return
+      }
+
+      setEmail(userData.user.email?.split('@')[0] ?? '')
+      setTxs((txRes.data ?? []) as Transaction[])
+      setCatBudgets((catBudgetsRes.data ?? []) as CategoryBudget[])
+      const s = settingsRes.data as UserSettings | null
+      setSettings(s)
+
+      // Redirect to setup wizard only if settings truly don't exist (not an error/network issue)
+      if (!settingsRes.error && (!s || !s.monthly_budget)) {
+        router.replace('/setup')
+        return
+      }
+    } catch (err) {
+      console.error('[inicio] load error:', err)
+      // On error still exit loading so UI isn't permanently stuck
     }
-
-    setEmail(userData.user.email?.split('@')[0] ?? '')
-    setTxs((txRes.data ?? []) as Transaction[])
-    setCatBudgets((catBudgetsRes.data ?? []) as CategoryBudget[])
-    const s = settingsRes.data as UserSettings | null
-    setSettings(s)
-
-    // Redirect to setup wizard if budget not configured
-    if (!s || !s.monthly_budget) {
-      router.replace('/setup')
-      return
-    }
-
     setLoading(false)
   }, [monthKey, router])
 

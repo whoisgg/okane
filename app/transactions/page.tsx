@@ -36,6 +36,8 @@ function TransactionsContent() {
   const [search, setSearch]             = useState('')
   const [typeFilter, setTypeFilter]     = useState<'all' | 'expense' | 'income' | 'payment'>('all')
   const [monthFilter, setMonthFilter]   = useState<string>('')
+  const [itemFilter, setItemFilter]     = useState<string>('all')
+  const [catFilter, setCatFilter]       = useState<string>('all')
   const [deleting, setDeleting]         = useState<string | null>(null)
   const [editing, setEditing]           = useState<Transaction | null>(null)
   const [showAdd, setShowAdd]           = useState(false)
@@ -82,8 +84,17 @@ function TransactionsContent() {
       const desc = (t.description ?? t.category).toLowerCase()
       if (!desc.includes(q)) return false
     }
+    if (itemFilter !== 'all') {
+      const [kind, id] = itemFilter.split(':')
+      if (kind === 'cc' && t.credit_card_id !== id) return false
+      if (kind === 'ba' && t.bank_account_id !== id) return false
+    }
+    if (catFilter !== 'all' && t.category !== catFilter) return false
     return true
   })
+
+  // Unique categories present in all transactions (not filtered, so chips don't disappear)
+  const presentCats = Array.from(new Set(transactions.map(t => t.category))).sort()
 
   // payments are transfers, excluded from income/expense total
   const total = filtered.reduce((s, t) => t.type === 'expense' ? s - Number(t.amount) : t.type === 'income' ? s + Number(t.amount) : s, 0)
@@ -109,28 +120,83 @@ function TransactionsContent() {
         </div>
 
         {/* Filters */}
-        <div className="flex flex-wrap gap-2">
-          <input
-            type="text"
-            placeholder="Buscar..."
-            className="input flex-1 min-w-36 py-1.5 text-xs"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
-          <select className="input w-auto py-1.5 text-xs" value={typeFilter} onChange={e => setTypeFilter(e.target.value as any)}>
-            <option value="all">Todos</option>
-            <option value="expense">Gastos</option>
-            <option value="income">Ingresos</option>
-            <option value="payment">Pagos tarjeta</option>
+        <div className="flex flex-col gap-2">
+          {/* Row 1: search + type + month */}
+          <div className="flex flex-wrap gap-2">
+            <input
+              type="text"
+              placeholder="Buscar..."
+              className="input flex-1 min-w-36 py-1.5 text-xs"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+            />
+            <select className="input w-auto py-1.5 text-xs" value={typeFilter} onChange={e => setTypeFilter(e.target.value as any)}>
+              <option value="all">Todos</option>
+              <option value="expense">Gastos</option>
+              <option value="income">Ingresos</option>
+              <option value="payment">Pagos tarjeta</option>
+            </select>
+            <select className="input w-auto py-1.5 text-xs" value={monthFilter} onChange={e => setMonthFilter(e.target.value)}>
+              <option value="">Todos los meses</option>
+              {months.map(m => (
+                <option key={m} value={m}>
+                  {new Date(m + '-15').toLocaleDateString('es-CL', { month: 'long', year: 'numeric' })}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Row 2: item (tarjeta / cuenta) */}
+          <select className="input w-full py-1.5 text-xs" value={itemFilter} onChange={e => setItemFilter(e.target.value)}>
+            <option value="all">Todos los medios de pago</option>
+            {cards.length > 0 && (
+              <optgroup label="Tarjetas">
+                {cards.map(c => (
+                  <option key={c.id} value={`cc:${c.id}`}>
+                    {c.name}{c.last_four ? ` ···· ${c.last_four}` : ''}
+                  </option>
+                ))}
+              </optgroup>
+            )}
+            {bankAccounts.length > 0 && (
+              <optgroup label="Cuentas corrientes">
+                {bankAccounts.map(b => (
+                  <option key={b.id} value={`ba:${b.id}`}>
+                    {b.name}{b.last_four ? ` ···· ${b.last_four}` : ''}
+                  </option>
+                ))}
+              </optgroup>
+            )}
           </select>
-          <select className="input w-auto py-1.5 text-xs" value={monthFilter} onChange={e => setMonthFilter(e.target.value)}>
-            <option value="">Todos los meses</option>
-            {months.map(m => (
-              <option key={m} value={m}>
-                {new Date(m + '-15').toLocaleDateString('es-CL', { month: 'long', year: 'numeric' })}
-              </option>
-            ))}
-          </select>
+
+          {/* Row 3: category chips */}
+          {presentCats.length > 0 && (
+            <div className="flex gap-1.5 overflow-x-auto pb-1" style={{ scrollbarWidth: 'none' }}>
+              <button
+                onClick={() => setCatFilter('all')}
+                className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium border transition-colors ${
+                  catFilter === 'all'
+                    ? 'bg-accent text-white border-accent'
+                    : 'bg-surface-high border-border text-text-muted hover:text-text-primary'
+                }`}
+              >
+                Todas
+              </button>
+              {presentCats.map(cat => (
+                <button
+                  key={cat}
+                  onClick={() => setCatFilter(catFilter === cat ? 'all' : cat)}
+                  className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium border transition-colors ${
+                    catFilter === cat
+                      ? 'bg-accent text-white border-accent'
+                      : 'bg-surface-high border-border text-text-muted hover:text-text-primary'
+                  }`}
+                >
+                  {CAT_LABEL[cat] ?? cat}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Summary */}

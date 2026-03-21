@@ -136,20 +136,26 @@ export default function DashboardPage() {
     setLoading(true)
 
     // Fetch live USD/CLP rate from mindicador.cl (Chilean Central Bank)
+    // Captured as local var so all calculations in this load() use the same rate
+    let localUsdRate = 950
     try {
       const rateRes = await fetch('https://mindicador.cl/api/dolar')
       const rateJson = await rateRes.json()
       const liveRate = rateJson?.serie?.[0]?.valor
       if (liveRate && liveRate > 0) {
-        setUsdRate(Math.round(liveRate))
+        localUsdRate = Math.round(liveRate)
+        setUsdRate(localUsdRate)
         // Persist to settings so config page shows current rate
         const sb2 = getClient()
-        sb2.from('settings').update({ usd_exchange_rate: Math.round(liveRate) }).neq('id', '')
+        sb2.from('settings').update({ usd_exchange_rate: localUsdRate }).neq('id', '')
       }
     } catch { /* use default 950 if API fails */ }
 
     // Parallel fetch
-    const [txRes, subsRes, loansRes, settingsRes, cardsRes, cardTxsRes, uploadsRes, subLinkedRes, ccPaymentsRes, bankExpRes] = await Promise.all([
+    let txRes: any, subsRes: any, loansRes: any, settingsRes: any, cardsRes: any,
+        cardTxsRes: any, uploadsRes: any, subLinkedRes: any, ccPaymentsRes: any, bankExpRes: any
+    try {
+    ;[txRes, subsRes, loansRes, settingsRes, cardsRes, cardTxsRes, uploadsRes, subLinkedRes, ccPaymentsRes, bankExpRes] = await Promise.all([
       sb.from('transactions').select('amount,currency,date,is_from_cartola,credit_card_id').eq('type', 'expense').is('bank_account_id', null),
       sb.from('subscriptions').select('*').eq('is_active', true),
       sb.from('loans').select('*'),
@@ -160,7 +166,11 @@ export default function DashboardPage() {
       sb.from('transactions').select('subscription_id,amount,date,credit_card_id,currency').eq('type', 'expense').eq('is_from_cartola', false).eq('match_status', 'unmatched').not('subscription_id', 'is', null),
       sb.from('transactions').select('credit_card_id,amount,date').eq('type', 'payment').not('credit_card_id', 'is', null).order('date', { ascending: false }),
       sb.from('transactions').select('bank_account_id,amount,date').eq('type', 'expense').not('bank_account_id', 'is', null).eq('is_from_cartola', false),
-    ])
+    ])} catch (err) {
+      console.error('[dashboard] load error:', err)
+      setLoading(false)
+      return
+    }
 
     const txRows = txRes.data ?? []
     const subsData = (subsRes.data ?? []) as Subscription[]
@@ -240,14 +250,22 @@ export default function DashboardPage() {
         const forecastSubs = subsData.reduce((s, sub) => {
           if (sub.start_date && forecastYM < sub.start_date.slice(0, 7)) return s
           const monthly = sub.billing_period === 'annual' ? Number(sub.amount) / 12 : Number(sub.amount)
-          return s + monthly
+          const monthlyClp = (sub.currency ?? 'CLP') === 'USD'
+            ? Math.round(monthly * localUsdRate)
+            : monthly
+          return s + monthlyClp
         }, 0)
 
         // Sub-linked = manually entered sub payments pending cartola reconciliation (shown as "↳ Sin facturar")
         // Not added to total — forecastSubs already includes the full sub amount
         const forecastSubsLinked = subLinkedTxsData
           .filter(tx => tx.date.slice(0, 7) === forecastYM)
-          .reduce((s, tx) => s + Number(tx.amount), 0)
+          .reduce((s, tx) => {
+            const amtClp = (tx.currency ?? 'CLP') === 'USD'
+              ? Math.round(Number(tx.amount) * localUsdRate)
+              : Number(tx.amount)
+            return s + amtClp
+          }, 0)
 
         // Loans: only apply within [start_date, end_date] range
         const forecastLoans = loansData.reduce((s, l) => {

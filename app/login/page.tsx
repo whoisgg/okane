@@ -15,13 +15,24 @@ export default function LoginPage() {
     e.preventDefault()
     setLoading(true)
     setError('')
-    const sb = getClient()
-    const { error } = await sb.auth.signInWithPassword({ email, password })
-    if (error) {
-      setError(error.message)
+    try {
+      // Clear any stale singleton so we get a fresh client on login
+      if (typeof window !== 'undefined') delete (window as any).__okane_sb
+
+      const sb = getClient()
+      const { error, data } = await sb.auth.signInWithPassword({ email, password })
+      if (error) {
+        setError(error.message)
+        setLoading(false)
+      } else if (data.session) {
+        router.push('/inicio')
+      } else {
+        setError('No se pudo establecer la sesión. Intenta de nuevo.')
+        setLoading(false)
+      }
+    } catch (err: any) {
+      setError(err?.message ?? 'Error de red. Verifica tu conexión.')
       setLoading(false)
-    } else {
-      router.push('/dashboard')
     }
   }
 
