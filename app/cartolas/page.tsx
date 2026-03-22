@@ -101,7 +101,7 @@ export default function CartolasPage() {
     const { data: upload } = await sb.from('cartola_uploads').select('*').eq('id', uploadId).single() as { data: any }
 
     // Delete cartola-imported transactions
-    await sb.from('transactions').delete()
+    await (sb.from('transactions') as any).delete()
       .eq('cartola_upload_id', uploadId)
       .eq('is_from_cartola', true)
 
@@ -119,11 +119,11 @@ export default function CartolasPage() {
     // Reset card balance fields that were set from this upload
     if (upload?.credit_card_id) {
       const resetField = upload.currency === 'USD' ? { balance_usd: 0 } : { balance: 0 }
-      await sb.from('credit_cards').update(resetField).eq('id', upload.credit_card_id)
+      await (sb.from('credit_cards') as any).update(resetField).eq('id', upload.credit_card_id)
     }
 
     // Delete the upload record
-    await sb.from('cartola_uploads').delete().eq('id', uploadId)
+    await (sb.from('cartola_uploads') as any).delete().eq('id', uploadId)
     await loadHistory()
     setDeletingId(null)
   }
@@ -225,8 +225,8 @@ export default function CartolasPage() {
         currency: parsed.currency ?? 'CLP',
         upcoming_amounts: parsed.upcomingPayments ?? null,
       }
-      const { data: uploadData, error: uploadErr } = await sb
-        .from('cartola_uploads').insert(uploadBody).select('id').single()
+      const { data: uploadData, error: uploadErr } = await (sb
+        .from('cartola_uploads') as any).insert(uploadBody).select('id').single()
       if (uploadErr) throw new Error(uploadErr.message)
       setUploadId(uploadData.id)
 
@@ -321,11 +321,11 @@ export default function CartolasPage() {
 
       const confirmed = matchedPairs.filter(p => confirmedPairs.has(p.id))
       for (const pair of confirmed) {
-        await sb.from('transactions').update({ match_status: 'matched' }).eq('id', pair.manual.id)
+        await (sb.from('transactions') as any).update({ match_status: 'matched' }).eq('id', pair.manual.id)
       }
 
       if (cartolaOnly.length > 0) {
-        await sb.from('transactions').insert(cartolaOnly.map(ct => ({
+        await (sb.from('transactions') as any).insert(cartolaOnly.map(ct => ({
           user_id: user.id,
           amount: ct.amount,
           currency: snap.currency ?? 'CLP',
@@ -343,7 +343,7 @@ export default function CartolasPage() {
         })))
       }
 
-      await sb.from('cartola_uploads').update({ status: 'procesada', matched_count: confirmed.length }).eq('id', uploadId)
+      await (sb.from('cartola_uploads') as any).update({ status: 'procesada', matched_count: confirmed.length }).eq('id', uploadId)
 
       // Update card balance:
       //   balance     = cupoUtilizado (deuda total real) if available, else totalAmount
@@ -362,7 +362,7 @@ export default function CartolasPage() {
           balanceUpdate.balance = snap.totalAmount
       }
       if (Object.keys(balanceUpdate).length > 0) {
-        await sb.from('credit_cards').update(balanceUpdate).eq('id', selectedCard)
+        await (sb.from('credit_cards') as any).update(balanceUpdate).eq('id', selectedCard)
       }
 
       // Auto-create "Cuotas período anterior" apertura transaction
@@ -377,13 +377,13 @@ export default function CartolasPage() {
             : new Date().toISOString().split('T')[0]
 
         // Remove any previous apertura for this card+period to avoid duplicates
-        await sb.from('transactions')
+        await (sb.from('transactions') as any)
           .delete()
           .eq('credit_card_id', selectedCard)
           .eq('category', 'apertura')
           .eq('date', aperturaDate)
 
-        await sb.from('transactions').insert({
+        await (sb.from('transactions') as any).insert({
           user_id: user.id,
           amount: aperturaAmount,
           currency: 'CLP',
