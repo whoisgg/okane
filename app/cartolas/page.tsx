@@ -107,7 +107,7 @@ export default function CartolasPage() {
 
     // Revert match_status on manual transactions that were matched to this cartola period
     if (upload?.credit_card_id && upload?.period_start && upload?.period_end) {
-      await sb.from('transactions')
+      await (sb.from('transactions') as any)
         .update({ match_status: null })
         .eq('credit_card_id', upload.credit_card_id)
         .eq('is_from_cartola', false)
