@@ -79,7 +79,7 @@ export default function SetupPage() {
       if (!user) throw new Error('No autenticado')
 
       // Upsert settings
-      const { error: sErr } = await sb.from('settings').upsert(
+      const { error: sErr } = await (sb.from('settings') as any).upsert(
         { user_id: user.id, monthly_budget: clpParse(budget) },
         { onConflict: 'user_id' }
       )

@@ -95,7 +95,7 @@ export default function ConfigPage() {
     const removed = CATEGORIES.filter(c => !catLimits[c] || parse(catLimits[c]) === 0)
     await Promise.all([
       rows.length > 0
-        ? sb.from('category_budgets').upsert(rows, { onConflict: 'user_id,category' })
+        ? (sb.from('category_budgets') as any).upsert(rows, { onConflict: 'user_id,category' })
         : Promise.resolve(),
       removed.length > 0
         ? (sb.from('category_budgets') as any).delete().eq('user_id', user.id).in('category', removed)
@@ -112,7 +112,7 @@ export default function ConfigPage() {
     const sb = getClient()
     const { data: { user } } = await sb.auth.getUser()
     if (!user) return
-    await sb.from('settings').upsert({
+    await (sb.from('settings') as any).upsert({
       user_id: user.id,
       monthly_budget: parse(budget),
       savings_goal: parse(savingsGoal),
