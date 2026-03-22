@@ -4,7 +4,8 @@ import { useEffect, useState, useCallback, useRef, useMemo, MouseEvent } from 'r
 import { getClient } from '@/lib/supabase'
 import AppShell from '@/components/AppShell'
 import { clpFormatted } from '@/lib/utils'
-import type { CreditCard, BankAccount, Transaction, BankType } from '@/lib/types'
+import type { CreditCard, BankAccount, Transaction, BankType, Subscription, Loan } from '@/lib/types'
+import { TransactionModal } from '@/app/transactions/page'
 
 // ── Bank-branded card themes ──────────────────────────────────────────────────
 type CardTheme = {
@@ -27,6 +28,12 @@ const BANK_THEMES: Record<string, CardTheme> = {
     ringColor:    'rgba(255,255,255,0.12)',
     networkColor: 'rgba(255,255,255,0.85)',
   },
+  scotiabank: {
+    gradient:     'from-[#D0D3D6] via-[#E8EAEC] to-[#F5F6F7]',
+    gloss:        'from-white/40',
+    ringColor:    'rgba(180,180,180,0.25)',
+    networkColor: 'rgba(80,80,80,0.75)',
+  },
   unknown: {
     gradient:     'from-[#1E1B4B] via-[#3730A3] to-[#4F46E5]',
     gloss:        'from-white/10',
@@ -43,6 +50,7 @@ function bankFromName(bankName?: string): string {
   const n = (bankName ?? '').toLowerCase()
   if (n.includes('falabella')) return 'falabella'
   if (n.includes('santander')) return 'santander'
+  if (n.includes('scotiabank') || n.includes('scotia')) return 'scotiabank'
   return 'unknown'
 }
 
@@ -74,9 +82,10 @@ function MastercardLogo() {
 }
 
 const BANKS: { id: BankType; label: string; emoji: string }[] = [
-  { id: 'falabella', label: 'Falabella', emoji: '🏬' },
-  { id: 'santander', label: 'Santander', emoji: '🏦' },
-  { id: 'unknown',   label: 'Otro',      emoji: '💳' },
+  { id: 'falabella',  label: 'Falabella',  emoji: '🏬' },
+  { id: 'santander',  label: 'Santander',  emoji: '🏦' },
+  { id: 'scotiabank', label: 'Scotiabank', emoji: '🏦' },
+  { id: 'unknown',    label: 'Otro',       emoji: '💳' },
 ]
 
 function usdFormatted(amount: number) {
@@ -89,12 +98,15 @@ function usdFormatted(amount: number) {
 export default function SaldosPage() {
   const [cards, setCards]               = useState<CreditCard[]>([])
   const [accounts, setAccounts]         = useState<BankAccount[]>([])
+  const [subs, setSubs]                 = useState<Subscription[]>([])
+  const [loans, setLoans]               = useState<Loan[]>([])
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [selectedCard, setSelectedCard] = useState(0)
   const [view, setView]                 = useState<'tarjetas' | 'cuentas'>('tarjetas')
   const [tab, setTab]                   = useState<'facturado' | 'sin-facturar'>('sin-facturar')
   const [selectedCurrency, setSelectedCurrency] = useState<'CLP' | 'USD'>('CLP')
   const [loading, setLoading]           = useState(true)
+  const [editingTx, setEditingTx]       = useState<Transaction | null>(null)
 
   // Balance editing
   const [editingBalance, setEditingBalance] = useState(false)
@@ -159,12 +171,16 @@ export default function SaldosPage() {
 
   const load = useCallback(async () => {
     const sb = getClient()
-    const [cardsRes, accsRes] = await Promise.all([
+    const [cardsRes, accsRes, subsRes, loansRes] = await Promise.all([
       sb.from('credit_cards').select('*').order('created_at'),
       sb.from('bank_accounts').select('*').order('created_at'),
+      sb.from('subscriptions').select('id,name,amount,currency,billing_period').eq('is_active', true).order('name'),
+      sb.from('loans').select('id,name,lender,monthly_payment').eq('is_active', true).order('name'),
     ])
     setCards((cardsRes.data ?? []) as CreditCard[])
     setAccounts((accsRes.data ?? []) as BankAccount[])
+    setSubs((subsRes.data ?? []) as Subscription[])
+    setLoans((loansRes.data ?? []) as Loan[])
     setLoading(false)
   }, [])
 
@@ -361,12 +377,13 @@ export default function SaldosPage() {
               const bank       = isCC ? (cc.bank ?? 'unknown') : bankFromName(ba.bank_name)
               const theme      = cardTheme(bank)
               const network    = isCC ? cardNetwork(cc.name) : null
-              const bankLabel  = bank === 'falabella' ? 'Falabella' : bank === 'santander' ? 'Santander' : null
+              const bankLabel  = bank === 'falabella' ? 'Falabella' : bank === 'santander' ? 'Santander' : bank === 'scotiabank' ? 'Scotiabank' : null
+              const isDarkCard = bank === 'scotiabank'
 
               return (
                 <div
                   key={item.id}
-                  className={`relative flex-shrink-0 snap-center rounded-2xl bg-gradient-to-br ${theme.gradient} text-white shadow-xl overflow-hidden`}
+                  className={`relative flex-shrink-0 snap-center rounded-2xl bg-gradient-to-br ${theme.gradient} ${isDarkCard ? 'text-gray-800' : 'text-white'} shadow-xl overflow-hidden`}
                   style={{ width: 'calc(100% - 24px)', minHeight: '11rem' }}
                 >
                   {/* Top gloss */}
@@ -634,14 +651,18 @@ export default function SaldosPage() {
                 ) : (
                   <div className="divide-y divide-border">
                     {monthTxs.map(tx => (
-                      <div key={tx.id} className="flex items-center justify-between px-4 py-3">
-                        <div>
+                      <div
+                        key={tx.id}
+                        className="flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-surface-high active:bg-surface-high transition-colors"
+                        onClick={() => setEditingTx(tx)}
+                      >
+                        <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium text-text-primary line-clamp-1">
                             {tx.description ?? tx.category}
                           </p>
                           <div className="flex items-center gap-2 mt-0.5">
                             <p className="text-xs text-text-muted">
-                              {new Date(tx.date).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' })}
+                              {new Date(tx.date.slice(0, 10) + 'T12:00:00').toLocaleDateString('es-CL', { day: 'numeric', month: 'short' })}
                             </p>
                             {tx.is_installment && tx.installment_number != null && tx.installment_total != null && (
                               <span className="badge bg-accent/10 text-accent">{tx.installment_number}/{tx.installment_total}</span>
@@ -649,9 +670,12 @@ export default function SaldosPage() {
                             {tx.is_from_cartola && (
                               <span className="badge bg-accent/10 text-accent">cartola</span>
                             )}
+                            {tx.bank_account_id && !tx.is_transfer && (
+                              <span className="badge bg-accent/15 text-accent">flujo</span>
+                            )}
                           </div>
                         </div>
-                        <div className="flex flex-col items-end gap-1">
+                        <div className="ml-3 flex flex-col items-end gap-1 shrink-0">
                           <span className={`text-sm font-semibold tabular-nums ${tx.type === 'expense' ? 'text-danger' : 'text-success'}`}>
                             {tx.type === 'expense' ? '−' : '+'}{
                               tx.currency === 'USD'
@@ -676,6 +700,23 @@ export default function SaldosPage() {
           </div>
         )}
       </div>
+
+      {/* ── Edit Transaction Modal ──────────────────────────────────────── */}
+      {editingTx && (
+        <TransactionModal
+          cards={cards}
+          subs={subs}
+          loans={loans}
+          bankAccounts={accounts}
+          initial={editingTx}
+          onClose={() => setEditingTx(null)}
+          onSaved={(tx) => {
+            setTransactions(prev => prev.map(t => t.id === tx.id ? tx : t))
+            setEditingTx(null)
+          }}
+          onBankAccountCreated={(ba) => setAccounts(prev => [...prev, ba])}
+        />
+      )}
 
       {/* ── Add Card Modal ───────────────────────────────────────────────── */}
       {showAddCard && (

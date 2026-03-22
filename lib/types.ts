@@ -20,10 +20,12 @@ export interface Transaction {
   original_amount?: number
   original_currency?: string
   is_from_cartola: boolean
+  is_transfer: boolean
   match_status: MatchStatus
   matched_transaction_id?: string
   cartola_upload_id?: string
   subscription_id?: string
+  loan_id?: string
   created_at: string
 }
 
@@ -116,7 +118,7 @@ export interface UserSettings {
 
 // ── Parser types ──────────────────────────────────────────────────────────────
 
-export type BankType = 'falabella' | 'santander' | 'unknown'
+export type BankType = 'falabella' | 'santander' | 'scotiabank' | 'unknown'
 
 export interface CartolaTransaction {
   id: string           // client-side UUID for React keys

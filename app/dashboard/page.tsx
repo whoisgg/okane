@@ -9,14 +9,16 @@ import { clpFormatted, clpAbbreviated, shortMonthLabel, monthYearLabel } from '@
 import type { Transaction, Subscription, Loan, UserSettings, CreditCard } from '@/lib/types'
 
 const BANK_COLORS: Record<string, string> = {
-  falabella: 'bg-emerald-50 border-emerald-200',
-  santander: 'bg-red-50 border-red-200',
-  unknown:   'bg-surface-high border-border',
+  falabella:  'bg-emerald-50 border-emerald-200',
+  santander:  'bg-red-50 border-red-200',
+  scotiabank: 'bg-gray-50 border-gray-300',
+  unknown:    'bg-surface-high border-border',
 }
 const BANK_TEXT: Record<string, string> = {
-  falabella: 'text-emerald-700',
-  santander: 'text-red-700',
-  unknown:   'text-text-secondary',
+  falabella:  'text-emerald-700',
+  santander:  'text-red-700',
+  scotiabank: 'text-gray-700',
+  unknown:    'text-text-secondary',
 }
 
 interface MonthData {
@@ -152,6 +154,13 @@ export default function DashboardPage() {
     } catch { /* use default 950 if API fails */ }
 
     // Parallel fetch
+    // Date bounds for the 6-month window (current month → 5 months forward)
+    const _now = new Date()
+    const _baFrom = new Date(_now.getFullYear(), _now.getMonth(), 1)
+    const _baTo   = new Date(_now.getFullYear(), _now.getMonth() + 6, 1)
+    const baFromStr = `${_baFrom.getFullYear()}-${String(_baFrom.getMonth() + 1).padStart(2, '0')}-01`
+    const baToStr   = `${_baTo.getFullYear()}-${String(_baTo.getMonth() + 1).padStart(2, '0')}-01`
+
     let txRes: any, subsRes: any, loansRes: any, settingsRes: any, cardsRes: any,
         cardTxsRes: any, uploadsRes: any, subLinkedRes: any, ccPaymentsRes: any, bankExpRes: any
     try {
@@ -165,7 +174,17 @@ export default function DashboardPage() {
       sb.from('cartola_uploads').select('credit_card_id,period_end,total_amount,currency,upcoming_amounts').eq('status', 'procesada').not('period_end', 'is', null).not('total_amount', 'is', null),
       sb.from('transactions').select('subscription_id,amount,date,credit_card_id,currency').eq('type', 'expense').eq('is_from_cartola', false).eq('match_status', 'unmatched').not('subscription_id', 'is', null),
       sb.from('transactions').select('credit_card_id,amount,date').eq('type', 'payment').not('credit_card_id', 'is', null).order('date', { ascending: false }),
-      sb.from('transactions').select('bank_account_id,amount,date').eq('type', 'expense').not('bank_account_id', 'is', null).eq('is_from_cartola', false),
+      // forecastBA: net (expenses - incomes) of bank account transactions marked relevant.
+      // Bounded to dashboard window. Excludes loan/subscription to avoid double-counting.
+      sb.from('transactions')
+        .select('bank_account_id,amount,date,type')
+        .not('bank_account_id', 'is', null)
+        .eq('is_transfer', false)
+        .in('type', ['expense', 'income'])
+        .is('loan_id', null)
+        .is('subscription_id', null)
+        .gte('date', baFromStr)
+        .lt('date', baToStr),
     ])} catch (err) {
       console.error('[dashboard] load error:', err)
       setLoading(false)
@@ -181,7 +200,8 @@ export default function DashboardPage() {
     const uploadsData = (uploadsRes.data ?? []) as { credit_card_id: string; period_end: string; total_amount: number; currency?: string; upcoming_amounts?: { dueDate: string; amount: number }[] }[]
     const subLinkedTxsData = (subLinkedRes.data ?? []) as { subscription_id: string; amount: number; date: string; credit_card_id?: string | null; currency: string }[]
     const ccPaymentsData = (ccPaymentsRes.data ?? []) as { credit_card_id: string; amount: number; date: string }[]
-    const bankExpData = (bankExpRes.data ?? []) as { bank_account_id: string; amount: number; date: string }[]
+    const bankExpData = (bankExpRes.data ?? []) as { bank_account_id: string; amount: number; date: string; type: string }[]
+    console.log('[dashboard] bankExpRes:', bankExpRes.error, bankExpData.length, 'txns', bankExpData)
 
     setSubs(subsData)
     setLoans(loansData)
@@ -196,11 +216,11 @@ export default function DashboardPage() {
       setUsdRate(prev => prev === 950 ? settingsData.usd_exchange_rate! : prev)
     }
 
-    // Build 6-month rolling window
+    // Build 6-month rolling window (current month → 5 months forward)
     const now = new Date()
     const result: MonthData[] = []
 
-    for (let i = -2; i <= 3; i++) {
+    for (let i = 0; i <= 5; i++) {
       const d = new Date(now.getFullYear(), now.getMonth() + i, 1)
       const m = d.getMonth() + 1
       const y = d.getFullYear()
@@ -209,12 +229,13 @@ export default function DashboardPage() {
 
       if (!isForecast) {
         // Non-CC expenses: sum by calendar month (CLP only)
+        // Use string prefix to avoid UTC timezone shift (new Date() parses YYYY-MM-DD as UTC)
+        const monthPrefix = `${y}-${String(m).padStart(2, '0')}`
         const nonCCTotal = txRows
           .filter((tx: any) => {
             if (tx.credit_card_id) return false
             if ((tx.currency ?? 'CLP') === 'USD') return false
-            const td = new Date(tx.date)
-            return td.getMonth() + 1 === m && td.getFullYear() === y
+            return tx.date.startsWith(monthPrefix)
           })
           .reduce((s: number, tx: any) => s + Number(tx.amount), 0)
 
@@ -232,14 +253,15 @@ export default function DashboardPage() {
 
         const total = nonCCTotal + ccTotal
         const facturado = txRows
-          .filter((tx: any) => {
-            if (!tx.is_from_cartola) return false
-            const td = new Date(tx.date)
-            return td.getMonth() + 1 === m && td.getFullYear() === y
-          })
+          .filter((tx: any) => tx.is_from_cartola && tx.date.startsWith(monthPrefix))
           .reduce((s: number, tx: any) => s + Number(tx.amount), 0)
 
-        result.push({ month: m, year: y, label: shortMonthLabel(m, y), total, facturado, isForecast: false, forecastIncome: 0, forecastSubs: 0, forecastSubsLinked: 0, forecastLoans: 0, forecastCC: 0, forecastCCUnbilled: 0, forecastUSDAmount: 0, forecastUSDInCLP: 0, forecastUSDUnbilled: 0, forecastBA: 0 })
+        // Bank account net (expenses - incomes) for historical months
+        const historicalBA = bankExpData
+          .filter((tx: any) => tx.date.startsWith(monthPrefix))
+          .reduce((s: number, tx: any) => s + (tx.type === 'expense' ? Number(tx.amount) : -Number(tx.amount)), 0)
+
+        result.push({ month: m, year: y, label: shortMonthLabel(m, y), total: total + historicalBA, facturado, isForecast: false, forecastIncome: 0, forecastSubs: 0, forecastSubsLinked: 0, forecastLoans: 0, forecastCC: 0, forecastCCUnbilled: 0, forecastUSDAmount: 0, forecastUSDInCLP: 0, forecastUSDUnbilled: 0, forecastBA: historicalBA })
       } else {
         const income = settingsData?.monthly_budget ?? 0
         const forecastYM = `${y}-${String(m).padStart(2, '0')}`
@@ -343,14 +365,14 @@ export default function DashboardPage() {
         const exchangeRateSeed = settingsData?.usd_exchange_rate ?? 950
         const forecastUSDInCLP = Math.round(forecastUSDAmount * exchangeRateSeed)
 
-        // Bank account direct expenses (manual, is_from_cartola=false) for this month
+        // Bank account net (expenses - incomes) for this month
         const forecastBA = bankExpData
-          .filter(tx => { const d = new Date(tx.date); return d.getMonth() + 1 === m && d.getFullYear() === y })
-          .reduce((s, tx) => s + Number(tx.amount), 0)
+          .filter(tx => tx.date.startsWith(forecastYM))
+          .reduce((s, tx) => s + (tx.type === 'expense' ? Number(tx.amount) : -Number(tx.amount)), 0)
 
         // forecastSubsLinked is a visual indicator only — already included in forecastSubs, don't double-count
         const total = income > 0
-          ? Math.max(0, income - forecastSubs - forecastLoans - forecastCC - forecastUSDInCLP - forecastBA)
+          ? income - forecastSubs - forecastLoans - forecastCC - forecastUSDInCLP - forecastBA
           : forecastSubs + forecastLoans + forecastCC + forecastUSDInCLP + forecastBA
 
         result.push({ month: m, year: y, label: shortMonthLabel(m, y), total, facturado: 0, isForecast: true, forecastIncome: income, forecastSubs, forecastSubsLinked, forecastLoans, forecastCC, forecastCCUnbilled, forecastUSDAmount, forecastUSDInCLP, forecastUSDUnbilled, forecastBA })
@@ -358,8 +380,8 @@ export default function DashboardPage() {
     }
 
     setMonths(result)
-    // Select current month (index 2 in 6-month window starting -2)
-    setSelected(2)
+    // Select current month (index 0 in 6-month window starting from current)
+    setSelected(0)
     setLoading(false)
   }, [])
 
@@ -458,7 +480,7 @@ export default function DashboardPage() {
                   <ForecastRow label="↳ Sin facturar" amount={sel.forecastSubsLinked} isSub />
                 )}
                 <ForecastRow label="Créditos" amount={sel.forecastLoans} icon="🏦" />
-                <ForecastRow label="Cuenta Corriente" amount={sel.forecastBA} icon="🏛️" />
+                <ForecastRow label="Cuenta Corriente" amount={Math.abs(sel.forecastBA)} isIncome={sel.forecastBA < 0} icon="🏛️" />
                 <ForecastRow label="Tarjetas Facturado" amount={sel.forecastCC - sel.forecastCCUnbilled} icon="💳" />
                 {sel.forecastCCUnbilled > 0 && (
                   <ForecastRow label="↳ Sin facturar" amount={sel.forecastCCUnbilled} isSub />

@@ -9,9 +9,10 @@ const STEPS = ['Presupuesto', 'Tarjetas', 'Cuentas']
 
 // ── Bank options ──────────────────────────────────────────────────────────────
 const BANKS: { id: BankType; label: string; color: string }[] = [
-  { id: 'falabella', label: 'Falabella', color: 'border-emerald-500 bg-emerald-50 text-emerald-700' },
-  { id: 'santander', label: 'Santander', color: 'border-red-500 bg-red-50 text-red-700' },
-  { id: 'unknown',   label: 'Otro',      color: 'border-accent bg-accent/5 text-accent' },
+  { id: 'falabella',  label: 'Falabella',  color: 'border-emerald-500 bg-emerald-50 text-emerald-700' },
+  { id: 'santander',  label: 'Santander',  color: 'border-red-500 bg-red-50 text-red-700' },
+  { id: 'scotiabank', label: 'Scotiabank', color: 'border-gray-400 bg-gray-50 text-gray-700' },
+  { id: 'unknown',    label: 'Otro',       color: 'border-accent bg-accent/5 text-accent' },
 ]
 
 interface CardDraft   { bank: BankType; name: string; last_four: string; closing_day: string }

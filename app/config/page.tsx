@@ -129,7 +129,7 @@ export default function ConfigPage() {
     router.push('/login')
   }
 
-  const BANK_LABEL: Record<string, string> = { falabella: '🏬 Falabella', santander: '🏦 Santander', unknown: '💳 Otro' }
+  const BANK_LABEL: Record<string, string> = { falabella: '🏬 Falabella', santander: '🏦 Santander', scotiabank: '🏦 Scotiabank', unknown: '💳 Otro' }
 
   if (loading) return (
     <AppShell>

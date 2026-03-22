@@ -5,17 +5,17 @@ import { useSearchParams } from 'next/navigation'
 import { getClient } from '@/lib/supabase'
 import AppShell from '@/components/AppShell'
 import { clpFormatted } from '@/lib/utils'
-import type { Transaction, CreditCard, Subscription, BankAccount } from '@/lib/types'
+import type { Transaction, CreditCard, Subscription, BankAccount, Loan } from '@/lib/types'
 
 const CATEGORIES = [
   'hogar','comida','salud','transporte','entretenimiento',
-  'ropa','educacion','tecnologia','viajes','servicios','suscripciones','otros',
+  'ropa','educacion','tecnologia','viajes','servicios','suscripciones','financiero','otros',
 ]
 const CAT_LABEL: Record<string,string> = {
   hogar:'Hogar', comida:'Comida', salud:'Salud', transporte:'Transporte',
   entretenimiento:'Entretención', ropa:'Ropa', educacion:'Educación',
   tecnologia:'Tecnología', viajes:'Viajes', servicios:'Servicios',
-  suscripciones:'Suscripciones', otros:'Compras',
+  suscripciones:'Suscripciones', financiero:'Financiero', otros:'Compras',
 }
 
 export default function TransactionsPage() {
@@ -31,6 +31,7 @@ function TransactionsContent() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [cards, setCards]               = useState<CreditCard[]>([])
   const [subs, setSubs]                 = useState<Subscription[]>([])
+  const [loans, setLoans]               = useState<Loan[]>([])
   const [bankAccounts, setBankAccounts] = useState<BankAccount[]>([])
   const [loading, setLoading]           = useState(true)
   const [search, setSearch]             = useState('')
@@ -49,15 +50,17 @@ function TransactionsContent() {
 
   const load = useCallback(async () => {
     const sb = getClient()
-    const [txRes, cardsRes, subsRes, bankRes] = await Promise.all([
+    const [txRes, cardsRes, subsRes, loansRes, bankRes] = await Promise.all([
       sb.from('transactions').select('*').order('date', { ascending: false }).limit(200),
       sb.from('credit_cards').select('*'),
       sb.from('subscriptions').select('id,name,amount,currency,billing_period').eq('is_active', true).order('name'),
+      sb.from('loans').select('id,name,lender,monthly_payment').eq('is_active', true).order('name'),
       sb.from('bank_accounts').select('*').eq('is_active', true).order('created_at'),
     ])
     setTransactions((txRes.data ?? []) as Transaction[])
     setCards((cardsRes.data ?? []) as CreditCard[])
     setSubs((subsRes.data ?? []) as Subscription[])
+    setLoans((loansRes.data ?? []) as Loan[])
     setBankAccounts((bankRes.data ?? []) as BankAccount[])
     setLoading(false)
   }, [])
@@ -227,7 +230,7 @@ function TransactionsContent() {
                       </p>
                       <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
                         <span className="text-xs text-text-muted">
-                          {new Date(tx.date).toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric' })}
+                          {new Date(tx.date.slice(0, 10) + 'T12:00:00').toLocaleDateString('es-CL', { day: 'numeric', month: 'short', year: 'numeric' })}
                         </span>
                         <span className="text-xs text-text-muted">{tx.category}</span>
                         {card && <span className="badge bg-border text-text-muted">{card.name}</span>}
@@ -235,6 +238,7 @@ function TransactionsContent() {
                           <span className="badge bg-accent/10 text-accent">{tx.installment_number}/{tx.installment_total}</span>
                         )}
                         {tx.is_from_cartola && <span className="badge bg-success/10 text-success">cartola</span>}
+                        {tx.bank_account_id && !tx.is_transfer && <span className="badge bg-accent/15 text-accent">flujo</span>}
                       </div>
                     </div>
                     <div className="ml-4 flex items-center gap-3">
@@ -263,6 +267,7 @@ function TransactionsContent() {
           <TransactionModal
             cards={cards}
             subs={subs}
+            loans={loans}
             bankAccounts={bankAccounts}
             onClose={() => setShowAdd(false)}
             onSaved={(tx) => { setTransactions(prev => [tx, ...prev]); setShowAdd(false) }}
@@ -275,6 +280,7 @@ function TransactionsContent() {
           <TransactionModal
             cards={cards}
             subs={subs}
+            loans={loans}
             bankAccounts={bankAccounts}
             initial={editing}
             onClose={() => setEditing(null)}
@@ -292,9 +298,10 @@ function TransactionsContent() {
 
 // ── Unified Add / Edit modal ───────────────────────────────────────────────
 
-function TransactionModal({ cards, subs, bankAccounts, initial, onClose, onSaved, onBankAccountCreated }: {
+export function TransactionModal({ cards, subs, loans, bankAccounts, initial, onClose, onSaved, onBankAccountCreated }: {
   cards: CreditCard[]
   subs: Subscription[]
+  loans: Loan[]
   bankAccounts: BankAccount[]
   initial?: Transaction
   onClose: () => void
@@ -318,7 +325,7 @@ function TransactionModal({ cards, subs, bankAccounts, initial, onClose, onSaved
   const [amount, setAmount]               = useState(initAmount)
   const [description, setDescription]     = useState(initial?.description ?? '')
   const [category, setCategory]           = useState(initial?.category ?? 'otros')
-  const [date, setDate]                   = useState(initial?.date ?? new Date().toISOString().split('T')[0])
+  const [date, setDate]                   = useState(initial?.date ? initial.date.slice(0, 10) : new Date().toISOString().split('T')[0])
   const [type, setType]                   = useState<'expense' | 'income' | 'payment'>((initial?.type ?? 'expense') as 'expense' | 'income' | 'payment')
   const [cardId, setCardId]               = useState(initial?.credit_card_id ?? '')
   const [bankAccountId, setBankAccountId] = useState(initial?.bank_account_id ?? '')
@@ -329,7 +336,18 @@ function TransactionModal({ cards, subs, bankAccounts, initial, onClose, onSaved
   const [installmentTotal, setInstallmentTotal] = useState(String(initial?.installment_total ?? ''))
   const [isSubLinked, setIsSubLinked]     = useState(!!(initial?.subscription_id) || initial?.category === 'suscripciones')
   const [subscriptionId, setSubscriptionId] = useState(initial?.subscription_id ?? '')
+  const [isLoanLinked, setIsLoanLinked]   = useState(!!(initial?.loan_id))
+  const [loanId, setLoanId]               = useState(initial?.loan_id ?? '')
+  // isRelevantToFlujo = !is_transfer. Bank account txs default to NOT relevant (excluded from flujo).
+  const [isRelevantToFlujo, setIsRelevantToFlujo] = useState(
+    initial ? !(initial.is_transfer ?? false) : !(initial?.bank_account_id ?? false)
+  )
   const [saving, setSaving]               = useState(false)
+
+  // When bank account is selected on a NEW transaction, default to excluded from flujo
+  useEffect(() => {
+    if (!isEdit && bankAccountId) setIsRelevantToFlujo(false)
+  }, [bankAccountId, isEdit])
   const [error, setError]                 = useState('')
 
   function handleAmountChange(v: string) {
@@ -366,6 +384,7 @@ function TransactionModal({ cards, subs, bankAccounts, initial, onClose, onSaved
       bank_account_id:  bankAccountId || null,
       is_installment:   false,
       subscription_id:  null,
+      is_transfer:      !isRelevantToFlujo,
     } : {
       amount:            parsedAmount,
       currency,
@@ -378,6 +397,8 @@ function TransactionModal({ cards, subs, bankAccounts, initial, onClose, onSaved
       is_installment:    isInstallment,
       installment_total: isInstallment ? parseInt(installmentTotal) : null,
       subscription_id:   (type === 'expense' && isSubLinked && subscriptionId) ? subscriptionId : null,
+      loan_id:           (type === 'expense' && isLoanLinked && loanId) ? loanId : null,
+      is_transfer:       !isRelevantToFlujo,
     }
 
     let data: Transaction | null = null
@@ -526,6 +547,14 @@ function TransactionModal({ cards, subs, bankAccounts, initial, onClose, onSaved
                   }}>Guardar cuenta</button>
                 </div>
               )}
+
+              {bankAccountId && (
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={isRelevantToFlujo} onChange={e => setIsRelevantToFlujo(e.target.checked)} />
+                  <span className="text-text-secondary">Relevante para flujo</span>
+                  <span className="ml-auto text-xs text-text-muted">(incluir en proyección)</span>
+                </label>
+              )}
             </>
           )}
 
@@ -562,8 +591,14 @@ function TransactionModal({ cards, subs, bankAccounts, initial, onClose, onSaved
                 <label className="flex items-center gap-2 text-sm">
                   <input type="checkbox" checked={isSubLinked} onChange={e => {
                     setIsSubLinked(e.target.checked)
-                    if (e.target.checked) { setCategory('suscripciones') }
-                    else { setSubscriptionId(''); if (category === 'suscripciones') setCategory('otros') }
+                    if (e.target.checked) {
+                      setCategory('suscripciones')
+                      // Subscription payments from bank account are tracked via forecastSubs (no double count)
+                      if (bankAccountId) setIsRelevantToFlujo(true)
+                    } else {
+                      setSubscriptionId('')
+                      if (category === 'suscripciones') setCategory('otros')
+                    }
                   }} />
                   <span className="text-text-secondary">Es una suscripción</span>
                 </label>
@@ -579,12 +614,45 @@ function TransactionModal({ cards, subs, bankAccounts, initial, onClose, onSaved
                 </select>
               )}
 
+              {type === 'expense' && loans.length > 0 && (
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={isLoanLinked} onChange={e => {
+                    setIsLoanLinked(e.target.checked)
+                    if (e.target.checked) {
+                      // Loan payments from bank account are tracked via forecastLoans (no double count)
+                      if (bankAccountId) setIsRelevantToFlujo(true)
+                    } else {
+                      setLoanId('')
+                    }
+                  }} />
+                  <span className="text-text-secondary">Es pago de crédito</span>
+                </label>
+              )}
+              {type === 'expense' && isLoanLinked && loans.length > 0 && (
+                <select className="input" value={loanId} onChange={e => setLoanId(e.target.value)}>
+                  <option value="">Selecciona crédito...</option>
+                  {loans.map(l => (
+                    <option key={l.id} value={l.id}>
+                      {l.name}{l.lender ? ` — ${l.lender}` : ''} (${Number(l.monthly_payment).toLocaleString('es-CL')}/mes)
+                    </option>
+                  ))}
+                </select>
+              )}
+
               <label className="flex items-center gap-2 text-sm">
                 <input type="checkbox" checked={isInstallment} onChange={e => setIsInstallment(e.target.checked)} />
                 <span className="text-text-secondary">Es en cuotas</span>
               </label>
               {isInstallment && (
                 <input className="input" placeholder="Total de cuotas" value={installmentTotal} onChange={e => setInstallmentTotal(e.target.value)} />
+              )}
+
+              {bankAccountId && (
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={isRelevantToFlujo} onChange={e => setIsRelevantToFlujo(e.target.checked)} />
+                  <span className="text-text-secondary">Relevante para flujo</span>
+                  <span className="ml-auto text-xs text-text-muted">(incluir en proyección)</span>
+                </label>
               )}
             </>
           )}

@@ -4,7 +4,45 @@ import { useEffect, useState, useCallback } from 'react'
 import { getClient } from '@/lib/supabase'
 import AppShell from '@/components/AppShell'
 import { clpFormatted, clpAbbreviated } from '@/lib/utils'
-import type { Transaction, UserSettings, CategoryBudget } from '@/lib/types'
+import type { Transaction, UserSettings, CategoryBudget, CreditCard } from '@/lib/types'
+
+// ── Billing period helpers (mirrors dashboard logic exactly) ──────────────────
+type CardTx = { credit_card_id: string; amount: number; date: string; currency?: string; is_from_cartola?: boolean; match_status?: string; subscription_id?: string | null }
+
+function billingPeriod(closingDay: number, month: number, year: number): [Date, Date] {
+  const end = new Date(year, month - 1, closingDay - 1)
+  const prevMonth = month === 1 ? 12 : month - 1
+  const prevYear  = month === 1 ? year - 1 : year
+  const start = new Date(prevYear, prevMonth - 1, closingDay)
+  return [start, end]
+}
+function billingTotalUnbilled(txs: CardTx[], cardId: string, closingDay: number, month: number, year: number): number {
+  const [start, end] = billingPeriod(closingDay, month, year)
+  return txs
+    .filter(tx => {
+      if (tx.credit_card_id !== cardId) return false
+      if (tx.is_from_cartola) return false
+      if (tx.match_status === 'matched') return false
+      if ((tx.currency ?? 'CLP') === 'USD') return false
+      if (tx.subscription_id) return false
+      const d = new Date(tx.date + 'T12:00:00')
+      return d >= start && d <= end
+    })
+    .reduce((s, tx) => s + Number(tx.amount), 0)
+}
+function billingTotalUnbilledUSD(txs: CardTx[], cardId: string, closingDay: number, month: number, year: number): number {
+  const [start, end] = billingPeriod(closingDay, month, year)
+  return txs
+    .filter(tx => {
+      if (tx.credit_card_id !== cardId) return false
+      if (tx.is_from_cartola) return false
+      if (tx.match_status === 'matched') return false
+      if ((tx.currency ?? 'CLP') !== 'USD') return false
+      const d = new Date(tx.date + 'T12:00:00')
+      return d >= start && d <= end
+    })
+    .reduce((s, tx) => s + Number(tx.amount), 0)
+}
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import CatIcon from '@/components/CatIcon'
@@ -68,6 +106,7 @@ export default function InicioPage() {
   const [catBudgets, setCatBudgets] = useState<CategoryBudget[]>([])
   const [loading, setLoading]       = useState(true)
   const [email, setEmail]           = useState('')
+  const [flujoDisponible, setFlujoDisponible] = useState<number | null>(null)
 
   // Month navigation
   const now = new Date()
@@ -85,7 +124,7 @@ export default function InicioPage() {
       const nextMonth  = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 1)
       const monthEnd   = new Date(nextMonth.getTime() - 86400000).toISOString().split('T')[0]
 
-      const [{ data: userData }, txRes, settingsRes, catBudgetsRes] = await Promise.all([
+      const [{ data: userData }, txRes, settingsRes, catBudgetsRes, subsRes, loansRes, cardsRes, uploadsRes, bankExpRes, cardTxsRes] = await Promise.all([
         sb.auth.getUser(),
         sb.from('transactions')
           .select('*')
@@ -96,6 +135,28 @@ export default function InicioPage() {
           .order('date', { ascending: false }),
         sb.from('settings').select('*').single(),
         sb.from('category_budgets').select('*'),
+        // flujo: subscriptions (need billing_period + start_date for annual handling)
+        sb.from('subscriptions').select('amount,currency,billing_period,start_date').eq('is_active', true),
+        // flujo: loans (need start_date + end_date for range check)
+        sb.from('loans').select('monthly_payment,start_date,end_date'),
+        // flujo: credit cards
+        sb.from('credit_cards').select('id,closing_day').eq('is_active', true),
+        // flujo: cartola uploads (includes upcoming_amounts for forecast fallback)
+        sb.from('cartola_uploads').select('credit_card_id,period_end,total_amount,currency,upcoming_amounts')
+          .eq('status', 'procesada').not('period_end', 'is', null).not('total_amount', 'is', null),
+        // flujo: bank account relevant transactions this month
+        sb.from('transactions')
+          .select('amount,date,type')
+          .not('bank_account_id', 'is', null)
+          .eq('is_transfer', false)
+          .in('type', ['expense', 'income'])
+          .is('loan_id', null)
+          .is('subscription_id', null)
+          .gte('date', monthStart)
+          .lte('date', monthEnd),
+        // flujo: CC transactions (for unbilled calculation — needs is_from_cartola, match_status, subscription_id)
+        sb.from('transactions').select('credit_card_id,amount,date,currency,is_from_cartola,match_status,subscription_id')
+          .eq('type', 'expense').not('credit_card_id', 'is', null),
       ])
 
       // Check auth first — unauthenticated users go to login, not setup
@@ -114,6 +175,84 @@ export default function InicioPage() {
       if (!settingsRes.error && (!s || !s.monthly_budget)) {
         router.replace('/setup')
         return
+      }
+
+      // ── Calcular flujo disponible (lógica idéntica al dashboard) ─────────────
+      const income      = Number(s?.monthly_budget ?? 0)
+      const usdRate     = Number(s?.usd_exchange_rate ?? 950)
+      const curMonth    = targetDate.getMonth() + 1
+      const curYear     = targetDate.getFullYear()
+      const forecastYM  = `${curYear}-${String(curMonth).padStart(2, '0')}`
+
+      const subsData    = subsRes.data ?? []
+      const loansData   = loansRes.data ?? []
+      const cardsData   = (cardsRes.data ?? []) as CreditCard[]
+      const uploadsData = (uploadsRes.data ?? []) as { credit_card_id: string; period_end: string; total_amount: number; currency?: string; upcoming_amounts?: { dueDate: string; amount: number }[] }[]
+      const bankExpData = bankExpRes.data ?? []
+      const cardTxsData = (cardTxsRes.data ?? []) as CardTx[]
+
+      // Subs: check start_date, handle annual (÷12)
+      const fSubs = subsData.reduce((s: number, sub: any) => {
+        if (sub.start_date && forecastYM < sub.start_date.slice(0, 7)) return s
+        const monthly = sub.billing_period === 'annual' ? Number(sub.amount) / 12 : Number(sub.amount)
+        return s + ((sub.currency ?? 'CLP') === 'USD' ? Math.round(monthly * usdRate) : monthly)
+      }, 0)
+
+      // Loans: filter by start_date / end_date
+      const fLoans = loansData.reduce((s: number, l: any) => {
+        if (l.start_date && forecastYM < l.start_date.slice(0, 7)) return s
+        if (l.end_date && forecastYM > l.end_date.slice(0, 7)) return s
+        return s + Number(l.monthly_payment ?? 0)
+      }, 0)
+
+      // CC: billed from cartola OR upcoming_amounts fallback + unbilled manual transactions
+      let fCCBilled = 0
+      let fCCUnbilled = 0
+      let fUSDAmount = 0
+      for (const card of cardsData) {
+        if (!card.closing_day) continue
+        const [, periodEnd] = billingPeriod(card.closing_day, curMonth, curYear)
+        const periodEndStr  = periodEnd.toISOString().split('T')[0]
+
+        const exactUpload = uploadsData.find(u =>
+          u.credit_card_id === card.id && u.period_end === periodEndStr && u.currency !== 'USD'
+        )
+        if (exactUpload) {
+          fCCBilled += exactUpload.total_amount
+        } else {
+          // Try upcoming_amounts from latest cartola
+          const latestUpload = uploadsData
+            .filter(u => u.credit_card_id === card.id && u.upcoming_amounts)
+            .sort((a, b) => b.period_end.localeCompare(a.period_end))[0]
+          if (latestUpload?.upcoming_amounts) {
+            const match = latestUpload.upcoming_amounts.find(up => {
+              const d = new Date(up.dueDate)
+              return d.getMonth() + 1 === curMonth && d.getFullYear() === curYear
+            })
+            if (match) fCCBilled += match.amount
+          }
+          // Unbilled manual transactions
+          fCCUnbilled += billingTotalUnbilled(cardTxsData, card.id, card.closing_day, curMonth, curYear)
+        }
+
+        // USD billed cartola
+        const usdUpload = uploadsData.find(u =>
+          u.credit_card_id === card.id && u.period_end === periodEndStr && u.currency === 'USD'
+        )
+        if (usdUpload) fUSDAmount += usdUpload.total_amount
+
+        // USD unbilled (current month only)
+        fUSDAmount += billingTotalUnbilledUSD(cardTxsData, card.id, card.closing_day, curMonth, curYear)
+      }
+      const fCC         = fCCBilled + fCCUnbilled
+      const fUSDInCLP   = Math.round(fUSDAmount * usdRate)
+
+      // Bank account net
+      const fBA = bankExpData.reduce((s: number, tx: any) =>
+        s + (tx.type === 'expense' ? Number(tx.amount) : -Number(tx.amount)), 0)
+
+      if (income > 0) {
+        setFlujoDisponible(income - fSubs - fLoans - fCC - fUSDInCLP - fBA)
       }
     } catch (err) {
       console.error('[inicio] load error:', err)
@@ -186,39 +325,12 @@ export default function InicioPage() {
           </button>
         </div>
 
-        {/* ── Hero card: disponible ── */}
+        {/* ── Hero card: gastado ── */}
         <div className="rounded-2xl bg-surface p-5 shadow-sm border border-border space-y-3">
-          <p className="text-sm text-text-muted">disponible este mes</p>
-          <p className={`text-[2.4rem] font-bold leading-none tracking-tight ${
-            budget > 0
-              ? disponible < 0 ? 'text-danger' : 'text-text-primary'
-              : 'text-text-primary'
-          }`}>
-            {budget > 0 ? clpFormatted(Math.abs(disponible)) : clpFormatted(totalSpent)}
+          <p className="text-sm text-text-muted">gastado este mes</p>
+          <p className="text-[2.4rem] font-bold leading-none tracking-tight text-text-primary">
+            {clpFormatted(totalSpent)}
           </p>
-
-          {budget > 0 && (
-            <>
-              {/* Thin progress bar */}
-              <div className="h-[3px] overflow-hidden rounded-full bg-border">
-                <div
-                  className={`h-full rounded-full transition-all ${budgetPct > 85 ? 'bg-danger' : 'bg-accent'}`}
-                  style={{ width: `${budgetPct}%` }}
-                />
-              </div>
-              <div className="flex items-center justify-between text-xs text-text-muted">
-                <span>gastado {clpFormatted(totalSpent)}</span>
-                <span>de {clpFormatted(budget)}</span>
-              </div>
-            </>
-          )}
-
-          {budget === 0 && (
-            <p className="text-xs text-text-muted">
-              Configura tu{' '}
-              <Link href="/config" className="text-accent underline">presupuesto mensual</Link>
-            </p>
-          )}
         </div>
 
         {/* ── Savings goal ── */}

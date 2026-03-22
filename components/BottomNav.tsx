@@ -91,6 +91,7 @@ function QuickAddModal({ onClose }: { onClose: () => void }) {
   const [bankAccountId, setBankAccountId]   = useState('')
   const [isInstallment, setIsInstallment]   = useState(false)
   const [installmentTotal, setInstallmentTotal] = useState('')
+  const [isRelevantToFlujo, setIsRelevantToFlujo] = useState(false)
   const [cards, setCards]                   = useState<CreditCard[]>([])
   const [bankAccounts, setBankAccounts]     = useState<BankAccount[]>([])
   const [saving, setSaving]                 = useState(false)
@@ -106,6 +107,11 @@ function QuickAddModal({ onClose }: { onClose: () => void }) {
       setBankAccounts((data ?? []) as BankAccount[])
     )
   }, [])
+
+  // Auto-exclude from flujo when bank account is selected
+  useEffect(() => {
+    if (bankAccountId) setIsRelevantToFlujo(false)
+  }, [bankAccountId])
 
   function handleAmountChange(v: string) {
     if (currency === 'USD') {
@@ -149,6 +155,7 @@ function QuickAddModal({ onClose }: { onClose: () => void }) {
       bank_account_id:   bankAccountId || null,
       is_installment:    isInstallment,
       installment_total: isInstallment ? parseInt(installmentTotal) || null : null,
+      is_transfer:       !isRelevantToFlujo,
       match_status:      'unmatched',
       is_from_cartola:   false,
     })
@@ -262,6 +269,15 @@ function QuickAddModal({ onClose }: { onClose: () => void }) {
                   inputMode="numeric"
                   value={installmentTotal}
                   onChange={e => setInstallmentTotal(e.target.value.replace(/\D/g, ''))} />
+              )}
+
+              {bankAccountId && (
+                <label className="flex items-center gap-2.5 text-sm select-none cursor-pointer">
+                  <input type="checkbox" className="h-4 w-4 rounded accent-accent"
+                    checked={isRelevantToFlujo} onChange={e => setIsRelevantToFlujo(e.target.checked)} />
+                  <span className="text-text-secondary">Relevante para flujo</span>
+                  <span className="ml-auto text-xs text-text-muted">(incluir en proyección)</span>
+                </label>
               )}
 
               {error && <p className="text-xs text-danger">{error}</p>}

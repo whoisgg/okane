@@ -22,6 +22,13 @@ const BANKS: { id: BankType; label: string; color: string; icon: string; descrip
     icon: '🏦',
     description: 'Visa, Mastercard, LATAM Pass',
   },
+  {
+    id: 'scotiabank',
+    label: 'Scotiabank',
+    color: 'from-[#9CA3AF] to-[#6B7280]',
+    icon: '🏦',
+    description: 'Cuenta Corriente, Visa Scotiabank',
+  },
 ]
 
 type Step = 'select-bank' | 'upload' | 'preview' | 'matching' | 'done'
@@ -83,7 +90,7 @@ export default function CartolasPage() {
     // Attach card names
     const cardsMap: Record<string, string> = {}
     cards.forEach(c => { cardsMap[c.id] = c.name })
-    setHistory(data.map(u => ({ ...u, card_name: cardsMap[u.credit_card_id] })))
+    setHistory((data as any[]).map(u => ({ ...u, card_name: cardsMap[u.credit_card_id] })))
   }
 
   async function deleteUpload(uploadId: string) {
