@@ -73,7 +73,7 @@ export default function SuscripcionesPage() {
   async function saveEdit(id: string) {
     if (!editForm.name.trim() || !editForm.amount) return
     setSaving(true); setError(null)
-    const { error: err } = await getClient().from('subscriptions').update({
+    const { error: err } = await (getClient().from('subscriptions') as any).update({
       name:           editForm.name.trim(),
       amount:         editForm.currency === 'USD' ? parseFloat(editForm.amount) || 0 : parseInt(editForm.amount.replace(/\./g, ''), 10),
       billing_day:    editForm.day ? parseInt(editForm.day) : 1,
@@ -111,7 +111,7 @@ export default function SuscripcionesPage() {
 
   async function toggle(sub: Subscription) {
     setToggling(sub.id)
-    await getClient().from('subscriptions').update({ is_active: !sub.is_active }).eq('id', sub.id)
+    await (getClient().from('subscriptions') as any).update({ is_active: !sub.is_active }).eq('id', sub.id)
     setToggling(null)
     load()
   }

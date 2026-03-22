@@ -351,7 +351,7 @@ export default function CuadrePage() {
           .eq('is_from_cartola', true)
 
         const existSet = new Set(
-          (existing ?? []).map(t => `${String(t.date).slice(0, 10)}|${t.description}|${t.amount}`)
+          ((existing ?? []) as any[]).map(t => `${String(t.date).slice(0, 10)}|${t.description}|${t.amount}`)
         )
 
         const toInsert = excelResult.transactions

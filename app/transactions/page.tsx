@@ -340,7 +340,7 @@ export function TransactionModal({ cards, subs, loans, bankAccounts, initial, on
   const [loanId, setLoanId]               = useState(initial?.loan_id ?? '')
   // isRelevantToFlujo = !is_transfer. Bank account txs default to NOT relevant (excluded from flujo).
   const [isRelevantToFlujo, setIsRelevantToFlujo] = useState(
-    initial ? !(initial.is_transfer ?? false) : !(initial?.bank_account_id ?? false)
+    initial ? !(initial.is_transfer ?? false) : false
   )
   const [saving, setSaving]               = useState(false)
 
@@ -421,9 +421,9 @@ export function TransactionModal({ cards, subs, loans, bankAccounts, initial, on
 
     // If payment: reduce credit card balance by the payment amount
     if (type === 'payment' && cardId) {
-      const { data: card } = await sb.from('credit_cards').select('balance').eq('id', cardId).single()
+      const { data: card } = await sb.from('credit_cards').select('balance').eq('id', cardId).single() as { data: any }
       if (card) {
-        await sb.from('credit_cards')
+        await (sb.from('credit_cards') as any)
           .update({ balance: Math.max(0, Number(card.balance) - parsedAmount) })
           .eq('id', cardId)
       }

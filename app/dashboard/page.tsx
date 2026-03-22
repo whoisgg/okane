@@ -149,7 +149,7 @@ export default function DashboardPage() {
         setUsdRate(localUsdRate)
         // Persist to settings so config page shows current rate
         const sb2 = getClient()
-        sb2.from('settings').update({ usd_exchange_rate: localUsdRate }).neq('id', '')
+        ;(sb2.from('settings') as any).update({ usd_exchange_rate: localUsdRate }).neq('id', '')
       }
     } catch { /* use default 950 if API fails */ }
 
