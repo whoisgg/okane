@@ -240,11 +240,11 @@ export default function CartolasPage() {
         .neq('match_status', 'matched')
         .gte('date', start.toISOString().split('T')[0])
         .lte('date', end.toISOString().split('T')[0])
-      const manualTxs = manuals ?? []
+      const manualTxs = (manuals ?? []) as any[]
 
       // Fetch active subscriptions for matching
       const { data: subsData } = await sb.from('subscriptions').select('id,name,amount,currency').eq('is_active', true)
-      const activeSubs = subsData ?? []
+      const activeSubs = (subsData ?? []) as any[]
 
       const pairs: MatchPair[] = []
       const usedManual   = new Set<string>()
