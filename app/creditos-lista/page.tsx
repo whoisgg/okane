@@ -84,12 +84,12 @@ export default function CreditosPage() {
       end_date:          form.endDate ? form.endDate + '-01' : null,
     }
     if (editingId) {
-      const { error: err } = await sb.from('loans').update(payload).eq('id', editingId)
+      const { error: err } = await (sb.from('loans') as any).update(payload).eq('id', editingId)
       if (err) { setError(err.message); setSaving(false); return }
     } else {
       const { data: { user } } = await sb.auth.getUser()
       if (!user) { setError('No autenticado'); setSaving(false); return }
-      const { error: err } = await sb.from('loans').insert({ user_id: user.id, ...payload })
+      const { error: err } = await (sb.from('loans') as any).insert({ user_id: user.id, ...payload })
       if (err) { setError(err.message); setSaving(false); return }
     }
     cancelForm(); setSaving(false)

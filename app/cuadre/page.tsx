@@ -338,7 +338,7 @@ export default function CuadrePage() {
     const sb = getClient()
 
     // 1. Update account balance
-    await sb.from('bank_accounts').update({ balance: bestBalance }).eq('id', accountId)
+    await (sb.from('bank_accounts') as any).update({ balance: bestBalance }).eq('id', accountId)
 
     // 2. Optionally import Excel transactions
     if (importTxs && excelResult && excelResult.transactions.length > 0) {
@@ -374,7 +374,7 @@ export default function CuadrePage() {
           }))
 
         if (toInsert.length > 0) {
-          await sb.from('transactions').insert(toInsert)
+          await (sb.from('transactions') as any).insert(toInsert)
         }
       }
     }

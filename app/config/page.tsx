@@ -33,7 +33,7 @@ export default function ConfigPage() {
     if (!editingAccountName.trim()) return
     setSavingAccount(true)
     const sb = getClient()
-    await sb.from('bank_accounts').update({ name: editingAccountName.trim() }).eq('id', id)
+    await (sb.from('bank_accounts') as any).update({ name: editingAccountName.trim() }).eq('id', id)
     setAccounts(prev => prev.map(a => a.id === id ? { ...a, name: editingAccountName.trim() } : a))
     setEditingAccountId(null)
     setSavingAccount(false)
@@ -98,7 +98,7 @@ export default function ConfigPage() {
         ? sb.from('category_budgets').upsert(rows, { onConflict: 'user_id,category' })
         : Promise.resolve(),
       removed.length > 0
-        ? sb.from('category_budgets').delete().eq('user_id', user.id).in('category', removed)
+        ? (sb.from('category_budgets') as any).delete().eq('user_id', user.id).in('category', removed)
         : Promise.resolve(),
     ])
     setSavingCats(false)

@@ -54,7 +54,7 @@ export default function SuscripcionesPage() {
     const sb = getClient()
     const { data: { user } } = await sb.auth.getUser()
     if (!user) { setError('No autenticado'); setSaving(false); return }
-    const { error: err } = await sb.from('subscriptions').insert({
+    const { error: err } = await (sb.from('subscriptions') as any).insert({
       user_id:        user.id,
       name:           form.name.trim(),
       amount:         form.currency === 'USD' ? parseFloat(form.amount) || 0 : parseInt(form.amount.replace(/\./g, ''), 10),

@@ -71,7 +71,7 @@ export default function DashboardPage() {
     const sb = getClient()
     const { data: { user } } = await sb.auth.getUser()
     if (!user) { setSavingSub(false); return }
-    await sb.from('subscriptions').insert({
+    await (sb.from('subscriptions') as any).insert({
       user_id:     user.id,
       name:        subName.trim(),
       amount:      subCurrency === 'USD'
@@ -110,7 +110,7 @@ export default function DashboardPage() {
     const { data: { user } } = await sb.auth.getUser()
     if (!user) { setSavingLoan(false); return }
     const parse = (v: string) => parseInt(v.replace(/\./g, '') || '0', 10)
-    await sb.from('loans').insert({
+    await (sb.from('loans') as any).insert({
       user_id:           user.id,
       name:              loanName.trim(),
       lender:            loanLender.trim() || loanName.trim(),

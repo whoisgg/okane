@@ -143,7 +143,7 @@ function QuickAddModal({ onClose }: { onClose: () => void }) {
       setError('Monto inválido'); setSaving(false); return
     }
 
-    const { error: err } = await sb.from('transactions').insert({
+    const { error: err } = await (sb.from('transactions') as any).insert({
       user_id:           user.id,
       amount:            parsedAmount,
       currency,

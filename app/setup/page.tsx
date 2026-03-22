@@ -87,7 +87,7 @@ export default function SetupPage() {
 
       // Insert cards
       for (const c of cards) {
-        const { error: cErr } = await sb.from('credit_cards').insert({
+        const { error: cErr } = await (sb.from('credit_cards') as any).insert({
           user_id:     user.id,
           name:        c.name.trim(),
           last_four:   c.last_four.trim() || null,
@@ -101,7 +101,7 @@ export default function SetupPage() {
 
       // Insert accounts
       for (const a of accounts) {
-        const { error: aErr } = await sb.from('bank_accounts').insert({
+        const { error: aErr } = await (sb.from('bank_accounts') as any).insert({
           user_id:   user.id,
           name:      a.name.trim(),
           bank_name: a.bank_name.trim() || null,

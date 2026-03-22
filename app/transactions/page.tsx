@@ -70,7 +70,7 @@ function TransactionsContent() {
   async function deleteTransaction(id: string) {
     setDeleting(id)
     const sb = getClient()
-    await sb.from('transactions').delete().eq('id', id)
+    await (sb.from('transactions') as any).delete().eq('id', id)
     setTransactions(prev => prev.filter(t => t.id !== id))
     setDeleting(null)
   }
@@ -403,13 +403,13 @@ export function TransactionModal({ cards, subs, loans, bankAccounts, initial, on
 
     let data: Transaction | null = null
     if (isEdit) {
-      const res = await sb.from('transactions').update(body).eq('id', initial!.id).select().single()
+      const res = await (sb.from('transactions') as any).update(body).eq('id', initial!.id).select().single()
       if (res.error) { setError(res.error.message); setSaving(false); return }
       data = res.data as Transaction
     } else {
       const { data: { user } } = await sb.auth.getUser()
       if (!user) { setError('No autenticado'); setSaving(false); return }
-      const res = await sb.from('transactions').insert({
+      const res = await (sb.from('transactions') as any).insert({
         ...body,
         user_id: user.id,
         match_status: 'unmatched',
@@ -533,7 +533,7 @@ export function TransactionModal({ cards, subs, loans, bankAccounts, initial, on
                     const sb = getClient()
                     const { data: { user } } = await sb.auth.getUser()
                     if (!user) return
-                    const { data } = await sb.from('bank_accounts').insert({
+                    const { data } = await (sb.from('bank_accounts') as any).insert({
                       user_id: user.id, name: newBankName.trim(),
                       last_four: newBankLastFour || null, is_active: true,
                     }).select().single()

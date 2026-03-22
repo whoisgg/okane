@@ -120,7 +120,7 @@ export default function SaldosPage() {
     setSavingBalance(true)
     const sb = getClient()
     const field = isCard ? 'balance' : 'balance'
-    await sb.from(isCard ? 'credit_cards' : 'bank_accounts').update({ [field]: val }).eq('id', itemId)
+    await (sb.from(isCard ? 'credit_cards' : 'bank_accounts') as any).update({ [field]: val }).eq('id', itemId)
     if (isCard) setCards(prev => prev.map(c => c.id === itemId ? { ...c, balance: val } : c))
     else setAccounts(prev => prev.map(a => a.id === itemId ? { ...a, balance: val } : a))
     setEditingBalance(false)
@@ -189,7 +189,7 @@ export default function SaldosPage() {
     setAddingCard(true); setAddCardErr(null)
     try {
       const sb = getClient()
-      const { error } = await sb.from('credit_cards').insert({
+      const { error } = await (sb.from('credit_cards') as any).insert({
         name: newCardName.trim(),
         last_four: newCardLast4.trim() || null,
         closing_day: newCardClose ? parseInt(newCardClose) : null,
