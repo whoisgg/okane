@@ -62,7 +62,7 @@ export default function ConfigPage() {
       sb.from('bank_accounts').select('*').order('created_at'),
       sb.from('settings').select('*').single(),
       sb.from('category_budgets').select('*'),
-    ]).then(([{ data: { user } }, cardsRes, accsRes, settRes, catRes]) => {
+    ]).then(([{ data: { user } }, cardsRes, accsRes, settRes, catRes]: any[]) => {
       setEmail(user?.email ?? '')
       setCards((cardsRes.data ?? []) as CreditCard[])
       setAccounts((accsRes.data ?? []) as BankAccount[])
