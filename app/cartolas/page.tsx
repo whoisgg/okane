@@ -98,7 +98,7 @@ export default function CartolasPage() {
     const sb = getClient()
 
     // Fetch the upload record first so we know the card + period
-    const { data: upload } = await sb.from('cartola_uploads').select('*').eq('id', uploadId).single()
+    const { data: upload } = await sb.from('cartola_uploads').select('*').eq('id', uploadId).single() as { data: any }
 
     // Delete cartola-imported transactions
     await sb.from('transactions').delete()
