@@ -182,7 +182,7 @@ export default function CartolasPage() {
           .eq('period_end', pe)
           .limit(1)
         if (existing && existing.length > 0) {
-          const prev = existing[0]
+          const prev = existing[0] as any
           setDupWarning({
             periodStart: ps,
             periodEnd: pe,
