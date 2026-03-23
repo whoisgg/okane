@@ -39,13 +39,25 @@ function TransactionsContent() {
   const [monthFilter, setMonthFilter]   = useState<string>('')
   const [itemFilter, setItemFilter]     = useState<string>('all')
   const [catFilter, setCatFilter]       = useState<string>('all')
+  const [sinFacturar, setSinFacturar]   = useState(false)
+  const [sfType, setSfType]             = useState<'all' | 'cc_clp' | 'cc_usd' | 'subs'>('all')
   const [deleting, setDeleting]         = useState<string | null>(null)
   const [editing, setEditing]           = useState<Transaction | null>(null)
   const [showAdd, setShowAdd]           = useState(false)
 
   // Auto-open add modal when coming from sidebar "Nueva transacción" button
+  // Also handle sin_facturar filter from dashboard deep links
   useEffect(() => {
     if (searchParams.get('new') === '1') setShowAdd(true)
+    if (searchParams.get('filter') === 'sin_facturar') {
+      setSinFacturar(true)
+      const t = searchParams.get('sfType')
+      if (t === 'cc_clp' || t === 'cc_usd' || t === 'subs') setSfType(t)
+      const m = searchParams.get('month')
+      if (m) setMonthFilter(m)
+      const item = searchParams.get('item')
+      if (item) setItemFilter(item)
+    }
   }, [searchParams])
 
   const load = useCallback(async () => {
@@ -93,6 +105,24 @@ function TransactionsContent() {
       if (kind === 'ba' && t.bank_account_id !== id) return false
     }
     if (catFilter !== 'all' && t.category !== catFilter) return false
+    // Sin facturar filter: manual, unmatched transactions
+    if (sinFacturar) {
+      if (t.is_from_cartola) return false
+      if (t.match_status === 'matched') return false
+      if (sfType === 'cc_clp') {
+        if (!t.credit_card_id) return false
+        if ((t.currency ?? 'CLP') === 'USD') return false
+        if (t.subscription_id) return false
+      } else if (sfType === 'cc_usd') {
+        if (!t.credit_card_id) return false
+        if ((t.currency ?? 'CLP') !== 'USD') return false
+      } else if (sfType === 'subs') {
+        if (!t.subscription_id) return false
+      } else {
+        // 'all': any unbilled transaction on a credit card
+        if (!t.credit_card_id) return false
+      }
+    }
     return true
   })
 
@@ -148,6 +178,24 @@ function TransactionsContent() {
               ))}
             </select>
           </div>
+
+          {/* Sin facturar filter toggle */}
+          {sinFacturar && (
+            <div className="flex items-center gap-2 rounded-lg bg-warning/10 border border-warning/20 px-3 py-2">
+              <span className="text-xs text-warning font-medium">⚠ Sin facturar</span>
+              {sfType !== 'all' && (
+                <span className="text-[10px] text-warning/70 bg-warning/10 rounded-full px-2 py-0.5">
+                  {sfType === 'cc_clp' ? 'CLP tarjetas' : sfType === 'cc_usd' ? 'USD tarjetas' : 'Suscripciones'}
+                </span>
+              )}
+              <button
+                onClick={() => { setSinFacturar(false); setSfType('all') }}
+                className="ml-auto text-xs text-warning hover:text-warning/80 font-medium"
+              >
+                ✕ Quitar filtro
+              </button>
+            </div>
+          )}
 
           {/* Row 2: item (tarjeta / cuenta) */}
           <select className="input w-full py-1.5 text-xs" value={itemFilter} onChange={e => setItemFilter(e.target.value)}>
@@ -238,6 +286,9 @@ function TransactionsContent() {
                           <span className="badge bg-accent/10 text-accent">{tx.installment_number}/{tx.installment_total}</span>
                         )}
                         {tx.is_from_cartola && <span className="badge bg-success/10 text-success">cartola</span>}
+                        {!tx.is_from_cartola && tx.credit_card_id && tx.match_status !== 'matched' && (
+                          <span className="badge bg-warning/10 text-warning">sin facturar</span>
+                        )}
                         {tx.bank_account_id && !tx.is_transfer && <span className="badge bg-accent/15 text-accent">flujo</span>}
                       </div>
                     </div>

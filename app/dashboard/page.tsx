@@ -201,8 +201,6 @@ export default function DashboardPage() {
     const subLinkedTxsData = (subLinkedRes.data ?? []) as { subscription_id: string; amount: number; date: string; credit_card_id?: string | null; currency: string }[]
     const ccPaymentsData = (ccPaymentsRes.data ?? []) as { credit_card_id: string; amount: number; date: string }[]
     const bankExpData = (bankExpRes.data ?? []) as { bank_account_id: string; amount: number; date: string; type: string }[]
-    console.log('[dashboard] bankExpRes:', bankExpRes.error, bankExpData.length, 'txns', bankExpData)
-
     setSubs(subsData)
     setLoans(loansData)
     setCards(cardsData)
@@ -363,7 +361,7 @@ export default function DashboardPage() {
 
         // Use settingsData exchange rate as seed (will be overridden by live rate once loaded)
         const exchangeRateSeed = settingsData?.usd_exchange_rate ?? 950
-        const forecastUSDInCLP = Math.round(forecastUSDAmount * exchangeRateSeed)
+        const forecastUSDInCLP = Math.round((forecastUSDAmount + forecastUSDUnbilled) * exchangeRateSeed)
 
         // Bank account net (expenses - incomes) for this month
         const forecastBA = bankExpData
@@ -477,13 +475,13 @@ export default function DashboardPage() {
                 <hr className="border-border" />
                 <ForecastRow label="Suscripciones" amount={sel.forecastSubs} icon="🔁" />
                 {sel.forecastSubsLinked > 0 && (
-                  <ForecastRow label="↳ Sin facturar" amount={sel.forecastSubsLinked} isSub />
+                  <ForecastRow label="↳ Sin facturar" amount={sel.forecastSubsLinked} isSub href={`/transactions?filter=sin_facturar&sfType=subs&month=${sel.year}-${String(sel.month).padStart(2, '0')}`} />
                 )}
                 <ForecastRow label="Créditos" amount={sel.forecastLoans} icon="🏦" />
                 <ForecastRow label="Cuenta Corriente" amount={Math.abs(sel.forecastBA)} isIncome={sel.forecastBA < 0} icon="🏛️" />
                 <ForecastRow label="Tarjetas Facturado" amount={sel.forecastCC - sel.forecastCCUnbilled} icon="💳" />
                 {sel.forecastCCUnbilled > 0 && (
-                  <ForecastRow label="↳ Sin facturar" amount={sel.forecastCCUnbilled} isSub />
+                  <ForecastRow label="↳ Sin facturar" amount={sel.forecastCCUnbilled} isSub href={`/transactions?filter=sin_facturar&sfType=cc_clp&month=${sel.year}-${String(sel.month).padStart(2, '0')}`} />
                 )}
                 {(sel.forecastUSDAmount > 0 || sel.forecastUSDUnbilled > 0) && (
                   <>
@@ -491,9 +489,11 @@ export default function DashboardPage() {
                       label={`Dólar ($${usdRate.toLocaleString('es-CL')})`}
                       amount={sel.forecastUSDInCLP}
                       icon="💵"
-                      inlineAnnotation={sel.forecastUSDAmount > 0
-                        ? `US$ ${sel.forecastUSDAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                        : undefined}
+                      inlineAnnotation={
+                        (sel.forecastUSDAmount + sel.forecastUSDUnbilled) > 0
+                          ? `US$ ${(sel.forecastUSDAmount + sel.forecastUSDUnbilled).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                          : undefined
+                      }
                     />
                     {sel.forecastUSDUnbilled > 0 && (
                       <ForecastRow
@@ -501,6 +501,7 @@ export default function DashboardPage() {
                         amount={Math.round(sel.forecastUSDUnbilled * usdRate)}
                         inlineAnnotation={`US$ ${sel.forecastUSDUnbilled.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
                         isSub
+                        href={`/transactions?filter=sin_facturar&sfType=cc_usd&month=${sel.year}-${String(sel.month).padStart(2, '0')}`}
                       />
                     )}
                   </>
@@ -859,10 +860,13 @@ export default function DashboardPage() {
                           )}
                           {showUploadCTA && (
                             <div className="mt-2 flex items-center justify-between rounded-lg bg-warning/10 px-3 py-2">
-                              <div className="flex items-center gap-1.5 text-xs text-warning">
+                              <Link
+                                href={`/transactions?filter=sin_facturar&sfType=cc_clp&month=${sel.year}-${String(sel.month).padStart(2, '0')}&item=cc:${card.id}`}
+                                className="flex items-center gap-1.5 text-xs text-warning hover:underline"
+                              >
                                 <span>⚠</span>
                                 <span>{clpFormatted(unbilledAmount)} sin facturar</span>
-                              </div>
+                              </Link>
                               <Link
                                 href="/cartolas"
                                 className="flex items-center gap-1 text-xs font-semibold text-warning hover:underline"
@@ -873,10 +877,13 @@ export default function DashboardPage() {
                           )}
                           {showUSDUploadCTA && (
                             <div className="mt-2 flex items-center justify-between rounded-lg bg-warning/10 px-3 py-2">
-                              <div className="flex items-center gap-1.5 text-xs text-warning">
+                              <Link
+                                href={`/transactions?filter=sin_facturar&sfType=cc_usd&month=${sel.year}-${String(sel.month).padStart(2, '0')}&item=cc:${card.id}`}
+                                className="flex items-center gap-1.5 text-xs text-warning hover:underline"
+                              >
                                 <span>⚠</span>
                                 <span>US$ {unbilledUSDAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} sin facturar</span>
-                              </div>
+                              </Link>
                               <Link
                                 href="/cartolas"
                                 className="flex items-center gap-1 text-xs font-semibold text-warning hover:underline"
@@ -1031,20 +1038,17 @@ function billingTotalUnbilledUSD(
     .reduce((s, tx) => s + Number(tx.amount), 0)
 }
 
-function ForecastRow({ label, amount, isIncome, icon, inlineAnnotation, isSub }: {
-  label: string; amount: number; isIncome?: boolean; icon?: string; inlineAnnotation?: string; isSub?: boolean
+function ForecastRow({ label, amount, isIncome, icon, inlineAnnotation, isSub, href }: {
+  label: string; amount: number; isIncome?: boolean; icon?: string; inlineAnnotation?: string; isSub?: boolean; href?: string
 }) {
-  if (isSub) {
-    return (
-      <div className="flex items-center justify-between">
-        <span className="text-[11px] text-text-muted">{label}</span>
-        <span className="text-[11px] text-text-muted tabular-nums">
-          {amount > 0 ? `−${clpAbbreviated(amount)}` : '—'}
-        </span>
-      </div>
-    )
-  }
-  return (
+  const inner = isSub ? (
+    <div className={`flex items-center justify-between ${href ? 'cursor-pointer hover:bg-surface-high -mx-2 px-2 py-0.5 rounded-md transition-colors' : ''}`}>
+      <span className={`text-[11px] text-text-muted ${href ? 'underline decoration-dotted underline-offset-2' : ''}`}>{label}</span>
+      <span className="text-[11px] text-text-muted tabular-nums">
+        {amount > 0 ? `−${clpAbbreviated(amount)}` : '—'}
+      </span>
+    </div>
+  ) : (
     <div className="flex items-center justify-between">
       <span className="text-text-secondary">{icon && <span className="mr-1">{icon}</span>}{label}</span>
       <div className="flex items-center gap-2">
@@ -1057,4 +1061,9 @@ function ForecastRow({ label, amount, isIncome, icon, inlineAnnotation, isSub }:
       </div>
     </div>
   )
+
+  if (href) {
+    return <Link href={href}>{inner}</Link>
+  }
+  return inner
 }
