@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { getClient } from '@/lib/supabase'
 import AppShell from '@/components/AppShell'
-import { clpFormatted, clpAbbreviated, billingTotalUnbilled, billingTotalUnbilledUSD } from '@/lib/utils'
+import { clpFormatted, clpAbbreviated, billingPeriod, billingTotalUnbilled, billingTotalUnbilledUSD } from '@/lib/utils'
 import type { Transaction, UserSettings, CategoryBudget, CreditCard } from '@/lib/types'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -151,7 +151,7 @@ export default function InicioPage() {
       const cardsData   = (cardsRes.data ?? []) as CreditCard[]
       const uploadsData = (uploadsRes.data ?? []) as { credit_card_id: string; period_end: string; total_amount: number; currency?: string; upcoming_amounts?: { dueDate: string; amount: number }[] }[]
       const bankExpData = bankExpRes.data ?? []
-      const cardTxsData = (cardTxsRes.data ?? []) as CardTx[]
+      const cardTxsData = (cardTxsRes.data ?? []) as { credit_card_id: string; amount: number; date: string; currency?: string; is_from_cartola?: boolean; match_status?: string; subscription_id?: string | null }[]
 
       // Subs: check start_date, handle annual (÷12)
       const fSubs = subsData.reduce((s: number, sub: any) => {
@@ -160,11 +160,18 @@ export default function InicioPage() {
         return s + ((sub.currency ?? 'CLP') === 'USD' ? Math.round(monthly * usdRate) : monthly)
       }, 0)
 
-      // Loans: filter by start_date / end_date
+      // Loans: from start_date until projected payoff (derived from remaining_balance / cuota)
       const fLoans = loansData.reduce((s: number, l: any) => {
         if (l.start_date && forecastYM < l.start_date.slice(0, 7)) return s
-        if (l.end_date && forecastYM > l.end_date.slice(0, 7)) return s
-        return s + Number(l.monthly_payment ?? 0)
+        const monthly = Number(l.monthly_payment ?? 0)
+        const remaining = Number(l.remaining_balance ?? 0)
+        if (monthly <= 0 || remaining <= 0) return s
+        const cuotasLeft = Math.ceil(remaining / monthly)
+        const today = new Date()
+        const payoff = new Date(today.getFullYear(), today.getMonth() + cuotasLeft, 1)
+        const payoffYM = `${payoff.getFullYear()}-${String(payoff.getMonth() + 1).padStart(2, '0')}`
+        if (forecastYM > payoffYM) return s
+        return s + monthly
       }, 0)
 
       // CC: billed from cartola OR upcoming_amounts fallback + unbilled manual transactions

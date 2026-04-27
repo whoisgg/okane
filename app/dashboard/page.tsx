@@ -284,11 +284,19 @@ export default function DashboardPage() {
             return s + amtClp
           }, 0)
 
-        // Loans: only apply within [start_date, end_date] range
+        // Loans: apply from start_date until the projected payoff month.
+        // Payoff = current month + ceil(remaining_balance / monthly_payment) cuotas.
         const forecastLoans = loansData.reduce((s, l) => {
           if (l.start_date && forecastYM < l.start_date.slice(0, 7)) return s
-          if (l.end_date && forecastYM > l.end_date.slice(0, 7)) return s
-          return s + Number(l.monthly_payment)
+          const monthly = Number(l.monthly_payment)
+          const remaining = Number(l.remaining_balance)
+          if (monthly <= 0 || remaining <= 0) return s
+          const cuotasLeft = Math.ceil(remaining / monthly)
+          const today = new Date()
+          const payoff = new Date(today.getFullYear(), today.getMonth() + cuotasLeft, 1)
+          const payoffYM = `${payoff.getFullYear()}-${String(payoff.getMonth() + 1).padStart(2, '0')}`
+          if (forecastYM > payoffYM) return s
+          return s + monthly
         }, 0)
 
         // CC forecast: billed from exact cartola (if available) or upcoming_amounts; unbilled from manual txs
