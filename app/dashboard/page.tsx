@@ -5,7 +5,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 
 import { getClient } from '@/lib/supabase'
 import AppShell from '@/components/AppShell'
 import Link from 'next/link'
-import { clpFormatted, clpAbbreviated, shortMonthLabel, monthYearLabel } from '@/lib/utils'
+import { clpFormatted, clpAbbreviated, shortMonthLabel, monthYearLabel, billingPeriod, billingTotal, billingTotalUnbilled, billingTotalUnbilledUSD } from '@/lib/utils'
 import type { Transaction, Subscription, Loan, UserSettings, CreditCard } from '@/lib/types'
 
 const BANK_COLORS: Record<string, string> = {
@@ -20,6 +20,8 @@ const BANK_TEXT: Record<string, string> = {
   scotiabank: 'text-gray-700',
   unknown:    'text-text-secondary',
 }
+
+const LENDERS = ['Santander', 'BancoEstado', 'BCI', 'Banco de Chile', 'Itaú', 'Falabella', 'Scotiabank', 'Security', 'Consorcio', 'Ripley', 'Otro']
 
 interface MonthData {
   month: number
@@ -90,18 +92,12 @@ export default function DashboardPage() {
   }
 
   // ── Add loan ────────────────────────────────────────────────────────────────
-  const [showAddLoan, setShowAddLoan]       = useState(false)
-  const [loanName, setLoanName]             = useState('')
-  const [loanLender, setLoanLender]         = useState('')
-  const [loanTotal, setLoanTotal]           = useState('')
-  const [loanPayment, setLoanPayment]       = useState('')
-  const [loanBalance, setLoanBalance]       = useState('')
-  const [loanRate, setLoanRate]             = useState('')
-  const [loanStartDate, setLoanStartDate]   = useState(() => {
-    const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}`
-  })
-  const [loanEndDate, setLoanEndDate]       = useState('')
-  const [savingLoan, setSavingLoan]         = useState(false)
+  const [showAddLoan, setShowAddLoan]   = useState(false)
+  const [loanName, setLoanName]         = useState('')
+  const [loanLender, setLoanLender]     = useState('')
+  const [loanPayment, setLoanPayment]   = useState('')
+  const [loanBalance, setLoanBalance]   = useState('')
+  const [savingLoan, setSavingLoan]     = useState(false)
 
   async function saveLoan() {
     if (!loanName.trim() || !loanPayment) return
@@ -110,19 +106,18 @@ export default function DashboardPage() {
     const { data: { user } } = await sb.auth.getUser()
     if (!user) { setSavingLoan(false); return }
     const parse = (v: string) => parseInt(v.replace(/\./g, '') || '0', 10)
+    const balance = parse(loanBalance) || parse(loanPayment)
+    const today = new Date()
     await (sb.from('loans') as any).insert({
       user_id:           user.id,
       name:              loanName.trim(),
-      lender:            loanLender.trim() || loanName.trim(),
-      total_amount:      parse(loanTotal) || parse(loanPayment),
-      remaining_balance: parse(loanBalance) || parse(loanTotal) || parse(loanPayment),
+      lender:            loanLender || loanName.trim(),
       monthly_payment:   parse(loanPayment),
-      interest_rate:     loanRate ? parseFloat(loanRate) : 0,
-      start_date:        loanStartDate + '-01',
-      end_date:          loanEndDate ? loanEndDate + '-01' : null,
+      total_amount:      balance,
+      remaining_balance: balance,
+      start_date:        `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`,
     })
-    setLoanName(''); setLoanLender(''); setLoanTotal('')
-    setLoanPayment(''); setLoanBalance(''); setLoanRate(''); setLoanEndDate('')
+    setLoanName(''); setLoanLender(''); setLoanPayment(''); setLoanBalance('')
     setShowAddLoan(false); setSavingLoan(false)
     load()
   }
@@ -636,7 +631,10 @@ export default function DashboardPage() {
                   <div className="rounded-xl border border-border p-4 space-y-3">
                     <p className="text-sm font-semibold text-text-primary">Nuevo crédito</p>
                     <input className="input w-full" placeholder="Nombre (ej. Crédito consumo)" value={loanName} onChange={e => setLoanName(e.target.value)} />
-                    <input className="input w-full" placeholder="Institución (ej. BCI, CMF)" value={loanLender} onChange={e => setLoanLender(e.target.value)} />
+                    <select className="input w-full" value={loanLender} onChange={e => setLoanLender(e.target.value)}>
+                      <option value="">Selecciona institución…</option>
+                      {LENDERS.map(b => <option key={b} value={b}>{b}</option>)}
+                    </select>
                     <div className="grid grid-cols-2 gap-2">
                       <div className="relative">
                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary text-sm">$</span>
@@ -645,26 +643,6 @@ export default function DashboardPage() {
                       <div className="relative">
                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary text-sm">$</span>
                         <input className="input pl-6 w-full" placeholder="Saldo pendiente" inputMode="numeric" value={loanBalance} onChange={e => setLoanBalance(clpInput(e.target.value))} />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary text-sm">$</span>
-                        <input className="input pl-6 w-full" placeholder="Monto total (opcional)" inputMode="numeric" value={loanTotal} onChange={e => setLoanTotal(clpInput(e.target.value))} />
-                      </div>
-                      <div className="relative">
-                        <input className="input w-full pr-6" placeholder="Tasa % (opcional)" inputMode="decimal" value={loanRate} onChange={e => setLoanRate(e.target.value)} />
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-text-secondary text-sm">%</span>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div className="flex items-center gap-2">
-                        <label className="text-xs text-text-secondary whitespace-nowrap">Desde</label>
-                        <input type="month" className="input flex-1 text-sm" value={loanStartDate} onChange={e => setLoanStartDate(e.target.value)} />
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <label className="text-xs text-text-secondary whitespace-nowrap">Hasta</label>
-                        <input type="month" className="input flex-1 text-sm" value={loanEndDate} onChange={e => setLoanEndDate(e.target.value)} placeholder="Indefinido" />
                       </div>
                     </div>
                     <div className="flex gap-2">
@@ -963,79 +941,6 @@ export default function DashboardPage() {
       </div>
     </AppShell>
   )
-}
-
-// Given a card's closing_day and the selected month/year, return the billing period [start, end] as Date objects
-function billingPeriod(closingDay: number, month: number, year: number): [Date, Date] {
-  // The closing day OPENS the new billing period.
-  // e.g. closing_day=24 → March period = [Feb 24, Mar 23]
-  const end = new Date(year, month - 1, closingDay - 1)
-  const prevMonth = month === 1 ? 12 : month - 1
-  const prevYear  = month === 1 ? year - 1 : year
-  const start = new Date(prevYear, prevMonth - 1, closingDay)
-  return [start, end]
-}
-
-function billingTotal(
-  txs: { credit_card_id: string; amount: number; date: string; currency?: string }[],
-  cardId: string,
-  closingDay: number,
-  month: number,
-  year: number
-): number {
-  const [start, end] = billingPeriod(closingDay, month, year)
-  return txs
-    .filter(tx => {
-      if (tx.credit_card_id !== cardId) return false
-      if ((tx.currency ?? 'CLP') === 'USD') return false   // exclude USD from CLP totals
-      const d = new Date(tx.date)
-      return d >= start && d <= end
-    })
-    .reduce((s, tx) => s + Number(tx.amount), 0)
-}
-
-// Only counts manual, unmatched CLP transactions — used for "sin facturar" calculation
-// Excludes subscription-linked txs (already counted in forecastSubs)
-function billingTotalUnbilled(
-  txs: { credit_card_id: string; amount: number; date: string; is_from_cartola?: boolean; match_status?: string; currency?: string; subscription_id?: string | null }[],
-  cardId: string,
-  closingDay: number,
-  month: number,
-  year: number
-): number {
-  const [start, end] = billingPeriod(closingDay, month, year)
-  return txs
-    .filter(tx => {
-      if (tx.credit_card_id !== cardId) return false
-      if (tx.is_from_cartola) return false
-      if (tx.match_status === 'matched') return false
-      if ((tx.currency ?? 'CLP') === 'USD') return false   // exclude USD from CLP totals
-      if (tx.subscription_id) return false                 // already counted in forecastSubs
-      const d = new Date(tx.date)
-      return d >= start && d <= end
-    })
-    .reduce((s, tx) => s + Number(tx.amount), 0)
-}
-
-// Only counts manual, unmatched USD transactions — used for "sin facturar USD" calculation
-function billingTotalUnbilledUSD(
-  txs: { credit_card_id: string; amount: number; date: string; is_from_cartola?: boolean; match_status?: string; currency?: string }[],
-  cardId: string,
-  closingDay: number,
-  month: number,
-  year: number
-): number {
-  const [start, end] = billingPeriod(closingDay, month, year)
-  return txs
-    .filter(tx => {
-      if (tx.credit_card_id !== cardId) return false
-      if (tx.is_from_cartola) return false
-      if (tx.match_status === 'matched') return false
-      if ((tx.currency ?? 'CLP') !== 'USD') return false   // only USD
-      const d = new Date(tx.date)
-      return d >= start && d <= end
-    })
-    .reduce((s, tx) => s + Number(tx.amount), 0)
 }
 
 function ForecastRow({ label, amount, isIncome, icon, inlineAnnotation, isSub, href }: {

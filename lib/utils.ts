@@ -47,6 +47,89 @@ export function cn(...classes: (string | undefined | false | null)[]): string {
   return classes.filter(Boolean).join(' ')
 }
 
+// ── Credit-card billing period helpers ────────────────────────────────────────
+// The closing day OPENS the new billing period.
+// e.g. closing_day=24 → March period = [Feb 24, Mar 23]
+export function billingPeriod(closingDay: number, month: number, year: number): [Date, Date] {
+  const end = new Date(year, month - 1, closingDay - 1)
+  const prevMonth = month === 1 ? 12 : month - 1
+  const prevYear  = month === 1 ? year - 1 : year
+  const start = new Date(prevYear, prevMonth - 1, closingDay)
+  return [start, end]
+}
+
+type BillingTx = {
+  credit_card_id: string
+  amount: number
+  date: string
+  currency?: string
+  is_from_cartola?: boolean
+  match_status?: string
+  subscription_id?: string | null
+}
+
+export function billingTotal(
+  txs: BillingTx[],
+  cardId: string,
+  closingDay: number,
+  month: number,
+  year: number
+): number {
+  const [start, end] = billingPeriod(closingDay, month, year)
+  return txs
+    .filter(tx => {
+      if (tx.credit_card_id !== cardId) return false
+      if ((tx.currency ?? 'CLP') === 'USD') return false
+      const d = new Date(tx.date.slice(0, 10) + 'T12:00:00')
+      return d >= start && d <= end
+    })
+    .reduce((s, tx) => s + Number(tx.amount), 0)
+}
+
+// Manual, unmatched CLP transactions only — used for "sin facturar".
+// Excludes subscription-linked txs (already counted in forecastSubs).
+export function billingTotalUnbilled(
+  txs: BillingTx[],
+  cardId: string,
+  closingDay: number,
+  month: number,
+  year: number
+): number {
+  const [start, end] = billingPeriod(closingDay, month, year)
+  return txs
+    .filter(tx => {
+      if (tx.credit_card_id !== cardId) return false
+      if (tx.is_from_cartola) return false
+      if (tx.match_status === 'matched') return false
+      if ((tx.currency ?? 'CLP') === 'USD') return false
+      if (tx.subscription_id) return false
+      const d = new Date(tx.date.slice(0, 10) + 'T12:00:00')
+      return d >= start && d <= end
+    })
+    .reduce((s, tx) => s + Number(tx.amount), 0)
+}
+
+// Manual, unmatched USD transactions only — for the "sin facturar USD" line.
+export function billingTotalUnbilledUSD(
+  txs: BillingTx[],
+  cardId: string,
+  closingDay: number,
+  month: number,
+  year: number
+): number {
+  const [start, end] = billingPeriod(closingDay, month, year)
+  return txs
+    .filter(tx => {
+      if (tx.credit_card_id !== cardId) return false
+      if (tx.is_from_cartola) return false
+      if (tx.match_status === 'matched') return false
+      if ((tx.currency ?? 'CLP') !== 'USD') return false
+      const d = new Date(tx.date.slice(0, 10) + 'T12:00:00')
+      return d >= start && d <= end
+    })
+    .reduce((s, tx) => s + Number(tx.amount), 0)
+}
+
 // ── Auto-categorization from merchant / transaction description ───────────────
 // Returns one of the canonical category keys used throughout the app
 export function categorizeTransaction(description: string): string {

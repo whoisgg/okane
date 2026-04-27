@@ -1,7 +1,7 @@
 // ── Mirrors iOS Models.swift ──────────────────────────────────────────────────
 
 export type TransactionType = 'expense' | 'income' | 'payment'
-export type MatchStatus = 'unmatched' | 'matched' | 'ignored'
+export type MatchStatus = 'unmatched' | 'matched'
 
 export interface Transaction {
   id: string
@@ -90,12 +90,10 @@ export interface Loan {
   user_id: string
   name: string
   lender: string
-  total_amount: number
-  remaining_balance: number
+  total_amount: number       // Snapshot of balance at creation. Used for progress bar.
+  remaining_balance: number  // Auto-decremented by trigger when txs with loan_id are added.
   monthly_payment: number
-  interest_rate: number
   start_date: string
-  end_date?: string
   created_at: string
 }
 

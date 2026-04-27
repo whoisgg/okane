@@ -3,46 +3,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import { getClient } from '@/lib/supabase'
 import AppShell from '@/components/AppShell'
-import { clpFormatted, clpAbbreviated } from '@/lib/utils'
+import { clpFormatted, clpAbbreviated, billingTotalUnbilled, billingTotalUnbilledUSD } from '@/lib/utils'
 import type { Transaction, UserSettings, CategoryBudget, CreditCard } from '@/lib/types'
-
-// ── Billing period helpers (mirrors dashboard logic exactly) ──────────────────
-type CardTx = { credit_card_id: string; amount: number; date: string; currency?: string; is_from_cartola?: boolean; match_status?: string; subscription_id?: string | null }
-
-function billingPeriod(closingDay: number, month: number, year: number): [Date, Date] {
-  const end = new Date(year, month - 1, closingDay - 1)
-  const prevMonth = month === 1 ? 12 : month - 1
-  const prevYear  = month === 1 ? year - 1 : year
-  const start = new Date(prevYear, prevMonth - 1, closingDay)
-  return [start, end]
-}
-function billingTotalUnbilled(txs: CardTx[], cardId: string, closingDay: number, month: number, year: number): number {
-  const [start, end] = billingPeriod(closingDay, month, year)
-  return txs
-    .filter(tx => {
-      if (tx.credit_card_id !== cardId) return false
-      if (tx.is_from_cartola) return false
-      if (tx.match_status === 'matched') return false
-      if ((tx.currency ?? 'CLP') === 'USD') return false
-      if (tx.subscription_id) return false
-      const d = new Date(tx.date + 'T12:00:00')
-      return d >= start && d <= end
-    })
-    .reduce((s, tx) => s + Number(tx.amount), 0)
-}
-function billingTotalUnbilledUSD(txs: CardTx[], cardId: string, closingDay: number, month: number, year: number): number {
-  const [start, end] = billingPeriod(closingDay, month, year)
-  return txs
-    .filter(tx => {
-      if (tx.credit_card_id !== cardId) return false
-      if (tx.is_from_cartola) return false
-      if (tx.match_status === 'matched') return false
-      if ((tx.currency ?? 'CLP') !== 'USD') return false
-      const d = new Date(tx.date + 'T12:00:00')
-      return d >= start && d <= end
-    })
-    .reduce((s, tx) => s + Number(tx.amount), 0)
-}
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import CatIcon from '@/components/CatIcon'
