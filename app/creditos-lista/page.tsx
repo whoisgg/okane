@@ -15,7 +15,8 @@ function parse(v: string) {
 }
 
 const LENDERS = ['Santander', 'BancoEstado', 'BCI', 'Banco de Chile', 'Itaú', 'Falabella', 'Scotiabank', 'Security', 'Consorcio', 'Ripley', 'Otro']
-const EMPTY = { name: '', lender: '', payment: '', balance: '' }
+const thisMonth = () => { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}` }
+const EMPTY = { name: '', lender: '', payment: '', balance: '', startDate: thisMonth() }
 
 function addMonths(d: Date, n: number): Date {
   const x = new Date(d)
@@ -59,10 +60,11 @@ export default function CreditosPage() {
   function startEdit(loan: Loan) {
     setEditingId(loan.id)
     setForm({
-      name:    loan.name,
-      lender:  loan.lender ?? '',
-      payment: numToClp(Number(loan.monthly_payment)),
-      balance: numToClp(Number(loan.remaining_balance)),
+      name:      loan.name,
+      lender:    loan.lender ?? '',
+      payment:   numToClp(Number(loan.monthly_payment)),
+      balance:   numToClp(Number(loan.remaining_balance)),
+      startDate: loan.start_date ? loan.start_date.slice(0, 7) : thisMonth(),
     })
     setShowForm(true)
     setError(null)
@@ -84,6 +86,7 @@ export default function CreditosPage() {
         name:            form.name.trim(),
         lender:          form.lender || form.name.trim(),
         monthly_payment: parse(form.payment),
+        start_date:      `${form.startDate}-01`,
       }
       const { error: err } = await (sb.from('loans') as any).update(payload).eq('id', editingId)
       if (err) { setError(err.message); setSaving(false); return }
@@ -91,7 +94,6 @@ export default function CreditosPage() {
       const { data: { user } } = await sb.auth.getUser()
       if (!user) { setError('No autenticado'); setSaving(false); return }
       const balance = parse(form.balance) || parse(form.payment)
-      const today = new Date()
       const payload = {
         user_id:           user.id,
         name:              form.name.trim(),
@@ -99,7 +101,7 @@ export default function CreditosPage() {
         monthly_payment:   parse(form.payment),
         total_amount:      balance,
         remaining_balance: balance,
-        start_date:        `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`,
+        start_date:        `${form.startDate}-01`,
       }
       const { error: err } = await (sb.from('loans') as any).insert(payload)
       if (err) { setError(err.message); setSaving(false); return }
@@ -187,6 +189,15 @@ export default function CreditosPage() {
                 </div>
               </div>
             </div>
+            <div>
+              <label className="block text-xs text-text-muted mb-1">Fecha inicio</label>
+              <input
+                type="month"
+                className="input w-full text-sm"
+                value={form.startDate}
+                onChange={e => setForm(p => ({ ...p, startDate: e.target.value }))}
+              />
+            </div>
             {editingId && (
               <p className="text-xs text-text-muted">
                 El saldo se actualiza automáticamente cuando registras un pago marcado como "crédito".
@@ -225,6 +236,9 @@ export default function CreditosPage() {
               const endLabel = cuotasLeft && cuotasLeft > 0
                 ? formatMonthYear(addMonths(new Date(), cuotasLeft))
                 : null
+              const startLabel = loan.start_date
+                ? `${loan.start_date.slice(5, 7)}/${loan.start_date.slice(0, 4)}`
+                : null
 
               return (
                 <div key={loan.id} className="card p-5 space-y-3">
@@ -232,7 +246,9 @@ export default function CreditosPage() {
                     <div>
                       <p className="font-semibold text-text-primary">{loan.name}</p>
                       <p className="text-xs text-text-muted mt-0.5">
-                        {loan.lender}{endLabel && ` · hasta ${endLabel}`}
+                        {loan.lender}
+                        {startLabel && ` · desde ${startLabel}`}
+                        {endLabel && ` · hasta ${endLabel}`}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">

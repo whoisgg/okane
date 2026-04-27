@@ -97,6 +97,9 @@ export default function DashboardPage() {
   const [loanLender, setLoanLender]     = useState('')
   const [loanPayment, setLoanPayment]   = useState('')
   const [loanBalance, setLoanBalance]   = useState('')
+  const [loanStartDate, setLoanStartDate] = useState(() => {
+    const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}`
+  })
   const [savingLoan, setSavingLoan]     = useState(false)
 
   async function saveLoan() {
@@ -107,7 +110,6 @@ export default function DashboardPage() {
     if (!user) { setSavingLoan(false); return }
     const parse = (v: string) => parseInt(v.replace(/\./g, '') || '0', 10)
     const balance = parse(loanBalance) || parse(loanPayment)
-    const today = new Date()
     await (sb.from('loans') as any).insert({
       user_id:           user.id,
       name:              loanName.trim(),
@@ -115,7 +117,7 @@ export default function DashboardPage() {
       monthly_payment:   parse(loanPayment),
       total_amount:      balance,
       remaining_balance: balance,
-      start_date:        `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`,
+      start_date:        `${loanStartDate}-01`,
     })
     setLoanName(''); setLoanLender(''); setLoanPayment(''); setLoanBalance('')
     setShowAddLoan(false); setSavingLoan(false)
@@ -644,6 +646,10 @@ export default function DashboardPage() {
                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-secondary text-sm">$</span>
                         <input className="input pl-6 w-full" placeholder="Saldo pendiente" inputMode="numeric" value={loanBalance} onChange={e => setLoanBalance(clpInput(e.target.value))} />
                       </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs text-text-secondary whitespace-nowrap">Inicio</label>
+                      <input type="month" className="input flex-1 text-sm" value={loanStartDate} onChange={e => setLoanStartDate(e.target.value)} />
                     </div>
                     <div className="flex gap-2">
                       <button onClick={() => setShowAddLoan(false)} className="btn-secondary flex-1">Cancelar</button>
