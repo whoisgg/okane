@@ -116,8 +116,8 @@ export default function InicioPage() {
           .is('subscription_id', null)
           .gte('date', monthStart)
           .lte('date', monthEnd),
-        // flujo: CC transactions (for unbilled calculation — needs is_from_cartola, match_status, subscription_id)
-        sb.from('transactions').select('credit_card_id,amount,date,currency,is_from_cartola,match_status,subscription_id')
+        // flujo: CC transactions (for unbilled calculation — needs is_from_cartola, match_status, subscription_id, installment fields)
+        sb.from('transactions').select('credit_card_id,amount,date,currency,is_from_cartola,match_status,subscription_id,is_installment,installment_number,installment_total')
           .eq('type', 'expense').not('credit_card_id', 'is', null),
       ])
 
@@ -151,7 +151,7 @@ export default function InicioPage() {
       const cardsData   = (cardsRes.data ?? []) as CreditCard[]
       const uploadsData = (uploadsRes.data ?? []) as { credit_card_id: string; period_end: string; total_amount: number; currency?: string; upcoming_amounts?: { dueDate: string; amount: number }[] }[]
       const bankExpData = bankExpRes.data ?? []
-      const cardTxsData = (cardTxsRes.data ?? []) as { credit_card_id: string; amount: number; date: string; currency?: string; is_from_cartola?: boolean; match_status?: string; subscription_id?: string | null }[]
+      const cardTxsData = (cardTxsRes.data ?? []) as { credit_card_id: string; amount: number; date: string; currency?: string; is_from_cartola?: boolean; match_status?: string; subscription_id?: string | null; is_installment?: boolean; installment_number?: number | null; installment_total?: number | null }[]
 
       // Subs: check start_date, handle annual (÷12)
       const fSubs = subsData.reduce((s: number, sub: any) => {

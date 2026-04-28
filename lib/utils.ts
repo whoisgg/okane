@@ -66,6 +66,40 @@ type BillingTx = {
   is_from_cartola?: boolean
   match_status?: string
   subscription_id?: string | null
+  is_installment?: boolean
+  installment_number?: number | null
+  installment_total?: number | null
+}
+
+// Determine if a tx contributes to the given (month, year) billing cycle.
+// Single payments only contribute to their own cycle (the one that captures the date).
+// Installments project forward from their cuota_number to cuota_total, one per cycle.
+function txContributesToCycle(
+  tx: BillingTx,
+  closingDay: number,
+  month: number,
+  year: number
+): boolean {
+  const d = new Date(tx.date.slice(0, 10) + 'T12:00:00')
+  if (isNaN(d.getTime())) return false
+  // Find the first billing cycle that captures this tx
+  let firstMonth: number, firstYear: number
+  if (d.getDate() <= closingDay) {
+    firstMonth = d.getMonth() + 1
+    firstYear = d.getFullYear()
+  } else {
+    const next = new Date(d.getFullYear(), d.getMonth() + 1, 1)
+    firstMonth = next.getMonth() + 1
+    firstYear = next.getFullYear()
+  }
+  const offset = (year - firstYear) * 12 + (month - firstMonth)
+  if (offset < 0) return false
+  if (tx.is_installment) {
+    const cuotaK = tx.installment_number ?? 1
+    const cuotaN = tx.installment_total ?? 1
+    return offset <= Math.max(0, cuotaN - cuotaK)
+  }
+  return offset === 0
 }
 
 export function billingTotal(
@@ -75,19 +109,18 @@ export function billingTotal(
   month: number,
   year: number
 ): number {
-  const [start, end] = billingPeriod(closingDay, month, year)
   return txs
     .filter(tx => {
       if (tx.credit_card_id !== cardId) return false
       if ((tx.currency ?? 'CLP') === 'USD') return false
-      const d = new Date(tx.date.slice(0, 10) + 'T12:00:00')
-      return d >= start && d <= end
+      return txContributesToCycle(tx, closingDay, month, year)
     })
     .reduce((s, tx) => s + Number(tx.amount), 0)
 }
 
 // Manual, unmatched CLP transactions only — used for "sin facturar".
 // Excludes subscription-linked txs (already counted in forecastSubs).
+// Installments project forward across their remaining cuotas.
 export function billingTotalUnbilled(
   txs: BillingTx[],
   cardId: string,
@@ -95,7 +128,6 @@ export function billingTotalUnbilled(
   month: number,
   year: number
 ): number {
-  const [start, end] = billingPeriod(closingDay, month, year)
   return txs
     .filter(tx => {
       if (tx.credit_card_id !== cardId) return false
@@ -103,8 +135,7 @@ export function billingTotalUnbilled(
       if (tx.match_status === 'matched') return false
       if ((tx.currency ?? 'CLP') === 'USD') return false
       if (tx.subscription_id) return false
-      const d = new Date(tx.date.slice(0, 10) + 'T12:00:00')
-      return d >= start && d <= end
+      return txContributesToCycle(tx, closingDay, month, year)
     })
     .reduce((s, tx) => s + Number(tx.amount), 0)
 }
@@ -117,15 +148,13 @@ export function billingTotalUnbilledUSD(
   month: number,
   year: number
 ): number {
-  const [start, end] = billingPeriod(closingDay, month, year)
   return txs
     .filter(tx => {
       if (tx.credit_card_id !== cardId) return false
       if (tx.is_from_cartola) return false
       if (tx.match_status === 'matched') return false
       if ((tx.currency ?? 'CLP') !== 'USD') return false
-      const d = new Date(tx.date.slice(0, 10) + 'T12:00:00')
-      return d >= start && d <= end
+      return txContributesToCycle(tx, closingDay, month, year)
     })
     .reduce((s, tx) => s + Number(tx.amount), 0)
 }

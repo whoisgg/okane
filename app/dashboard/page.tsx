@@ -51,7 +51,7 @@ export default function DashboardPage() {
   const [subs, setSubs] = useState<Subscription[]>([])
   const [loans, setLoans] = useState<Loan[]>([])
   const [cards, setCards] = useState<CreditCard[]>([])
-  const [cardTxs, setCardTxs] = useState<{ credit_card_id: string; amount: number; date: string; is_from_cartola?: boolean; match_status?: string; currency?: string; subscription_id?: string | null }[]>([])
+  const [cardTxs, setCardTxs] = useState<{ credit_card_id: string; amount: number; date: string; is_from_cartola?: boolean; match_status?: string; currency?: string; subscription_id?: string | null; is_installment?: boolean; installment_number?: number | null; installment_total?: number | null }[]>([])
   const [cartolaUploads, setCartolaUploads] = useState<{ credit_card_id: string; period_end: string; total_amount: number; currency?: string; upcoming_amounts?: { dueDate: string; amount: number }[] }[]>([])
   const [subLinkedTxs, setSubLinkedTxs] = useState<{ subscription_id: string; amount: number; date: string; credit_card_id?: string | null; currency: string }[]>([])
   const [ccPayments, setCcPayments] = useState<{ credit_card_id: string; amount: number; date: string }[]>([])
@@ -169,7 +169,7 @@ export default function DashboardPage() {
       sb.from('loans').select('*'),
       sb.from('settings').select('*').single(),
       sb.from('credit_cards').select('*').order('created_at'),
-      sb.from('transactions').select('credit_card_id,amount,date,is_from_cartola,match_status,currency,subscription_id').eq('type', 'expense').not('credit_card_id', 'is', null),
+      sb.from('transactions').select('credit_card_id,amount,date,is_from_cartola,match_status,currency,subscription_id,is_installment,installment_number,installment_total').eq('type', 'expense').not('credit_card_id', 'is', null),
       sb.from('cartola_uploads').select('credit_card_id,period_end,total_amount,currency,upcoming_amounts').eq('status', 'procesada').not('period_end', 'is', null).not('total_amount', 'is', null),
       sb.from('transactions').select('subscription_id,amount,date,credit_card_id,currency').eq('type', 'expense').eq('is_from_cartola', false).eq('match_status', 'unmatched').not('subscription_id', 'is', null),
       sb.from('transactions').select('credit_card_id,amount,date').eq('type', 'payment').not('credit_card_id', 'is', null).order('date', { ascending: false }),
@@ -196,7 +196,7 @@ export default function DashboardPage() {
     const loansData = (loansRes.data ?? []) as Loan[]
     const settingsData = settingsRes.data as UserSettings | null
     const cardsData = (cardsRes.data ?? []) as CreditCard[]
-    const cardTxsData = (cardTxsRes.data ?? []) as { credit_card_id: string; amount: number; date: string; is_from_cartola?: boolean; match_status?: string; currency?: string; subscription_id?: string | null }[]
+    const cardTxsData = (cardTxsRes.data ?? []) as { credit_card_id: string; amount: number; date: string; is_from_cartola?: boolean; match_status?: string; currency?: string; subscription_id?: string | null; is_installment?: boolean; installment_number?: number | null; installment_total?: number | null }[]
     const uploadsData = (uploadsRes.data ?? []) as { credit_card_id: string; period_end: string; total_amount: number; currency?: string; upcoming_amounts?: { dueDate: string; amount: number }[] }[]
     const subLinkedTxsData = (subLinkedRes.data ?? []) as { subscription_id: string; amount: number; date: string; credit_card_id?: string | null; currency: string }[]
     const ccPaymentsData = (ccPaymentsRes.data ?? []) as { credit_card_id: string; amount: number; date: string }[]
