@@ -64,6 +64,7 @@ function normalizeCat(c: string): string {
 export default function InicioPage() {
   const router = useRouter()
   const [txs, setTxs]               = useState<Transaction[]>([])
+  const [incomeTxs, setIncomeTxs]   = useState<Transaction[]>([])
   const [settings, setSettings]     = useState<UserSettings | null>(null)
   const [catBudgets, setCatBudgets] = useState<CategoryBudget[]>([])
   const [loading, setLoading]       = useState(true)
@@ -86,12 +87,19 @@ export default function InicioPage() {
       const nextMonth  = new Date(targetDate.getFullYear(), targetDate.getMonth() + 1, 1)
       const monthEnd   = new Date(nextMonth.getTime() - 86400000).toISOString().split('T')[0]
 
-      const [{ data: userData }, txRes, settingsRes, catBudgetsRes, subsRes, loansRes, cardsRes, uploadsRes, bankExpRes, cardTxsRes] = await Promise.all([
+      const [{ data: userData }, txRes, incomeTxRes, settingsRes, catBudgetsRes, subsRes, loansRes, cardsRes, uploadsRes, bankExpRes, cardTxsRes] = await Promise.all([
         sb.auth.getUser(),
         sb.from('transactions')
           .select('*')
           .eq('type', 'expense')
           .is('bank_account_id', null)
+          .gte('date', monthStart)
+          .lte('date', monthEnd)
+          .order('date', { ascending: false }),
+        // Income txs of the month — separate fetch to keep category breakdown clean
+        sb.from('transactions')
+          .select('*')
+          .eq('type', 'income')
           .gte('date', monthStart)
           .lte('date', monthEnd)
           .order('date', { ascending: false }),
@@ -129,6 +137,7 @@ export default function InicioPage() {
 
       setEmail(userData.user.email?.split('@')[0] ?? '')
       setTxs((txRes.data ?? []) as Transaction[])
+      setIncomeTxs((incomeTxRes.data ?? []) as Transaction[])
       setCatBudgets((catBudgetsRes.data ?? []) as CategoryBudget[])
       const s = settingsRes.data as UserSettings | null
       setSettings(s)
@@ -256,8 +265,13 @@ export default function InicioPage() {
     .slice(0, 6)
   const maxCat = categories[0]?.[1] ?? 1
 
-  // Recent
-  const recentTxs = [...txs].slice(0, 5)
+  // Total ingresos del mes (real, lo que efectivamente entró)
+  const totalIngresos = incomeTxs.reduce((s, t) => s + Number(t.amount), 0)
+
+  // Recent: mix expenses + incomes, ordered by date
+  const recentTxs = [...txs, ...incomeTxs]
+    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
+    .slice(0, 5)
 
   if (loading) return (
     <AppShell>
@@ -329,6 +343,21 @@ export default function InicioPage() {
           </div>
         )}
 
+        {/* ── Ingresos del mes ── */}
+        {totalIngresos > 0 && (
+          <div className="rounded-2xl bg-surface border border-border p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-widest text-text-muted">Ingresos del mes</p>
+                <p className="mt-1 text-2xl font-bold text-success">+{clpFormatted(totalIngresos)}</p>
+              </div>
+              <div className="text-right">
+                <p className="text-[10px] text-text-muted">{incomeTxs.length} {incomeTxs.length === 1 ? 'movimiento' : 'movimientos'}</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ── Categories ── */}
         {categories.length > 0 && (
           <div>
@@ -397,8 +426,14 @@ export default function InicioPage() {
             <div className="rounded-2xl bg-surface border border-border overflow-hidden divide-y divide-border">
               {recentTxs.map(tx => (
                 <div key={tx.id} className="flex items-center gap-3 px-4 py-3.5">
-                  <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl bg-accent/10 text-accent">
-                    <CatIcon cat={normalizeCat(tx.category)} className="h-5 w-5" />
+                  <div className={`flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl ${
+                    tx.type === 'income' ? 'bg-success/10 text-success' : 'bg-accent/10 text-accent'
+                  }`}>
+                    {tx.type === 'income' ? (
+                      <span className="text-lg">↓</span>
+                    ) : (
+                      <CatIcon cat={normalizeCat(tx.category)} className="h-5 w-5" />
+                    )}
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold text-text-primary">
@@ -414,8 +449,8 @@ export default function InicioPage() {
                     </div>
                   </div>
                   <div className="flex-shrink-0 flex flex-col items-end gap-0.5">
-                    <span className="text-sm font-bold text-danger">
-                      −{tx.currency === 'USD'
+                    <span className={`text-sm font-bold ${tx.type === 'income' ? 'text-success' : 'text-danger'}`}>
+                      {tx.type === 'income' ? '+' : '−'}{tx.currency === 'USD'
                         ? `US$ ${Number(tx.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
                         : clpFormatted(Number(tx.amount))
                       }
