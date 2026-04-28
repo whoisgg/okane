@@ -45,6 +45,7 @@ interface MonthData {
 export default function DashboardPage() {
   const [months, setMonths] = useState<MonthData[]>([])
   const [selected, setSelected] = useState(0)
+  const [budgetsTotal, setBudgetsTotal] = useState(0)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'tarjetas' | 'creditos' | 'suscripciones'>('tarjetas')
   const [subs, setSubs] = useState<Subscription[]>([])
@@ -159,9 +160,10 @@ export default function DashboardPage() {
     const baToStr   = `${_baTo.getFullYear()}-${String(_baTo.getMonth() + 1).padStart(2, '0')}-01`
 
     let txRes: any, subsRes: any, loansRes: any, settingsRes: any, cardsRes: any,
-        cardTxsRes: any, uploadsRes: any, subLinkedRes: any, ccPaymentsRes: any, bankExpRes: any
+        cardTxsRes: any, uploadsRes: any, subLinkedRes: any, ccPaymentsRes: any, bankExpRes: any,
+        budgetsRes: any
     try {
-    ;[txRes, subsRes, loansRes, settingsRes, cardsRes, cardTxsRes, uploadsRes, subLinkedRes, ccPaymentsRes, bankExpRes] = await Promise.all([
+    ;[txRes, subsRes, loansRes, settingsRes, cardsRes, cardTxsRes, uploadsRes, subLinkedRes, ccPaymentsRes, bankExpRes, budgetsRes] = await Promise.all([
       sb.from('transactions').select('amount,currency,date,is_from_cartola,credit_card_id').eq('type', 'expense').is('bank_account_id', null),
       sb.from('subscriptions').select('*').eq('is_active', true),
       sb.from('loans').select('*'),
@@ -182,6 +184,7 @@ export default function DashboardPage() {
         .is('subscription_id', null)
         .gte('date', baFromStr)
         .lt('date', baToStr),
+      sb.from('category_budgets').select('category,monthly_limit'),
     ])} catch (err) {
       console.error('[dashboard] load error:', err)
       setLoading(false)
@@ -198,6 +201,9 @@ export default function DashboardPage() {
     const subLinkedTxsData = (subLinkedRes.data ?? []) as { subscription_id: string; amount: number; date: string; credit_card_id?: string | null; currency: string }[]
     const ccPaymentsData = (ccPaymentsRes.data ?? []) as { credit_card_id: string; amount: number; date: string }[]
     const bankExpData = (bankExpRes.data ?? []) as { bank_account_id: string; amount: number; date: string; type: string }[]
+    const budgetsData = (budgetsRes.data ?? []) as { category: string; monthly_limit: number }[]
+    const budgetsTotalLocal = budgetsData.reduce((s, b) => s + Number(b.monthly_limit), 0)
+    setBudgetsTotal(budgetsTotalLocal)
     setSubs(subsData)
     setLoans(loansData)
     setCards(cardsData)
@@ -516,6 +522,24 @@ export default function DashboardPage() {
                   <span>Disponible estimado</span>
                   <span className={sel.total > 0 ? 'text-success' : 'text-danger'}>{sel.forecastIncome > 0 ? clpAbbreviated(sel.total) : '—'}</span>
                 </div>
+                {sel.forecastIncome > 0 && budgetsTotal > 0 && (() => {
+                  // Available if I respect my category budgets:
+                  // (Disponible) + (Tarjetas Facturado CLP + USD) − Metas
+                  // = Income − Subs − Loans − BankAccount − Metas
+                  const disponibleConMetas = sel.total + sel.forecastCC + sel.forecastUSDInCLP - budgetsTotal
+                  return (
+                    <div className="flex items-center justify-between text-sm pt-1">
+                      <span className="text-text-secondary inline-flex items-center gap-1">
+                        <span>🎯</span>
+                        <span>Si respeto mis metas</span>
+                        <span className="text-[10px] text-text-muted">(−{clpAbbreviated(budgetsTotal)})</span>
+                      </span>
+                      <span className={disponibleConMetas > 0 ? 'text-success font-medium' : 'text-danger font-medium'}>
+                        {clpAbbreviated(disponibleConMetas)}
+                      </span>
+                    </div>
+                  )
+                })()}
               </div>
             )}
           </div>
