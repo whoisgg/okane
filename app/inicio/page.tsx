@@ -241,10 +241,16 @@ export default function InicioPage() {
 
   useEffect(() => { load() }, [load])
 
+  // Reimbursements: income txs flagged is_reimbursement=true; their `category` holds
+  // the EXPENSE category being offset. They net (subtract) from total spend & per-cat.
+  const reimbursements = incomeTxs.filter(t => t.is_reimbursement && (t.currency ?? 'CLP') === 'CLP')
+  const totalReimbursed = reimbursements.reduce((s, t) => s + Number(t.amount), 0)
+
   // Budget calculations — only CLP transactions count toward the budget
-  const totalSpent  = txs
+  const grossSpent = txs
     .filter(t => (t.currency ?? 'CLP') === 'CLP')
     .reduce((s, t) => s + Number(t.amount), 0)
+  const totalSpent  = Math.max(0, grossSpent - totalReimbursed)
   const budget      = Number(settings?.monthly_budget ?? 0)
   const savingsGoal = Number(settings?.savings_goal ?? 0)
   const disponible  = budget > 0 ? budget - totalSpent : 0
@@ -253,12 +259,16 @@ export default function InicioPage() {
   const savedSoFar  = Math.max(0, disponible)
   const savingsPct  = savingsGoal > 0 ? Math.min(100, (savedSoFar / savingsGoal) * 100) : 0
 
-  // Categories — CLP transactions only; auto-categorized at cartola upload time
+  // Categories — CLP transactions only; reimbursements (income with flag) net per category
   const catMap: Record<string, number> = {}
   for (const tx of txs) {
     if ((tx.currency ?? 'CLP') === 'USD') continue        // skip USD (separate currency)
     const cat = normalizeCat(tx.category ?? 'otros')
     catMap[cat] = (catMap[cat] ?? 0) + Number(tx.amount)
+  }
+  for (const r of reimbursements) {
+    const cat = normalizeCat(r.category ?? 'otros')
+    catMap[cat] = Math.max(0, (catMap[cat] ?? 0) - Number(r.amount))
   }
   const categories = Object.entries(catMap)
     .sort(([, a], [, b]) => b - a)

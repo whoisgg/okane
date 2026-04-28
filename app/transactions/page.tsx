@@ -404,6 +404,7 @@ export function TransactionModal({ cards, subs, loans, bankAccounts, initial, on
   const [isRelevantToFlujo, setIsRelevantToFlujo] = useState(
     initial ? !(initial.is_transfer ?? false) : false
   )
+  const [isReimbursement, setIsReimbursement] = useState(!!initial?.is_reimbursement)
   const [saving, setSaving]               = useState(false)
 
   // When bank account is selected on a NEW transaction, default to excluded from flujo
@@ -461,6 +462,7 @@ export function TransactionModal({ cards, subs, loans, bankAccounts, initial, on
       subscription_id:   (type === 'expense' && isSubLinked && subscriptionId) ? subscriptionId : null,
       loan_id:           (type === 'expense' && isLoanLinked && loanId) ? loanId : null,
       is_transfer:       !isRelevantToFlujo,
+      is_reimbursement:  type === 'income' && isReimbursement,
     }
 
     let data: Transaction | null = null
@@ -634,9 +636,12 @@ export function TransactionModal({ cards, subs, loans, bankAccounts, initial, on
                 setCategory(e.target.value)
                 if (e.target.value === 'suscripciones') setIsSubLinked(true)
               }}>
-                {(type === 'income' ? INCOME_CATEGORIES : CATEGORIES).map(c => (
+                {(type === 'income' && !isReimbursement
+                  ? INCOME_CATEGORIES
+                  : CATEGORIES
+                ).map(c => (
                   <option key={c} value={c}>
-                    {(type === 'income' ? INCOME_LABEL : CAT_LABEL)[c] ?? c.charAt(0).toUpperCase() + c.slice(1)}
+                    {(type === 'income' && !isReimbursement ? INCOME_LABEL : CAT_LABEL)[c] ?? c.charAt(0).toUpperCase() + c.slice(1)}
                   </option>
                 ))}
               </select>
@@ -727,6 +732,20 @@ export function TransactionModal({ cards, subs, loans, bankAccounts, initial, on
                   <input type="checkbox" checked={isRelevantToFlujo} onChange={e => setIsRelevantToFlujo(e.target.checked)} />
                   <span className="text-text-secondary">Relevante para flujo</span>
                   <span className="ml-auto text-xs text-text-muted">(incluir en proyección)</span>
+                </label>
+              )}
+
+              {type === 'income' && (
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={isReimbursement} onChange={e => {
+                    const v = e.target.checked
+                    setIsReimbursement(v)
+                    // Switching the meaning of category — reset to a safe default
+                    if (v && !CATEGORIES.includes(category)) setCategory('otros')
+                    else if (!v && !INCOME_CATEGORIES.includes(category)) setCategory('reembolsos')
+                  }} />
+                  <span className="text-text-secondary">Es rendición / reembolso</span>
+                  <span className="ml-auto text-xs text-text-muted">(neta del gasto)</span>
                 </label>
               )}
             </>

@@ -21,6 +21,7 @@ export interface Transaction {
   original_currency?: string
   is_from_cartola: boolean
   is_transfer: boolean
+  is_reimbursement?: boolean
   match_status: MatchStatus
   matched_transaction_id?: string
   cartola_upload_id?: string
