@@ -418,12 +418,8 @@ export default function DashboardPage() {
 
         {/* Bar chart */}
         <div className="card p-5">
-          <div className="mb-4 flex items-center justify-between">
-            <span className="text-xs text-text-muted">Últimos 6 meses</span>
-            <div className="flex items-center gap-4 text-xs text-text-muted">
-              <span className="flex items-center gap-1"><span className="inline-block h-2 w-3 rounded bg-accent" /> Real</span>
-              <span className="flex items-center gap-1"><span className="inline-block h-2 w-3 rounded bg-success/60" /> Proyección</span>
-            </div>
+          <div className="mb-4">
+            <span className="text-xs text-text-muted">Próximos 6 meses</span>
           </div>
           <div className="flex h-28 items-end gap-1">
             {months.map((m, i) => {
