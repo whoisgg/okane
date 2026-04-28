@@ -512,6 +512,8 @@ export function TransactionModal({ cards, subs, loans, bankAccounts, initial, on
                 // Reset category to a sensible default for the new type
                 if (t === 'income' && !INCOME_CATEGORIES.includes(category)) setCategory('sueldo')
                 else if (t === 'expense' && !CATEGORIES.includes(category)) setCategory('otros')
+                // Income can't go on a credit card — clear cardId if any
+                if (t === 'income' && cardId) setCardId('')
               }}
                 className={`flex-1 rounded-lg py-2 text-sm font-medium transition ${
                   type === t
@@ -639,8 +641,10 @@ export function TransactionModal({ cards, subs, loans, bankAccounts, initial, on
                 ))}
               </select>
 
-              {/* Payment source: card OR bank account */}
-              {(cards.length > 0 || bankAccounts.length > 0) && (
+              {/* Payment source: card OR bank account.
+                  For income: only bank accounts (you can't deposit into a credit card). */}
+              {((type === 'expense' && (cards.length > 0 || bankAccounts.length > 0)) ||
+                (type === 'income' && bankAccounts.length > 0)) && (
                 <select className="input" value={bankAccountId ? `ba:${bankAccountId}` : cardId ? `cc:${cardId}` : ''}
                   onChange={e => {
                     const v = e.target.value
@@ -648,11 +652,11 @@ export function TransactionModal({ cards, subs, loans, bankAccounts, initial, on
                     else if (v.startsWith('cc:')) { setCardId(v.slice(3)); setBankAccountId('') }
                     else if (v.startsWith('ba:')) { setBankAccountId(v.slice(3)); setCardId('') }
                   }}>
-                  <option value="">Sin medio de pago</option>
-                  {cards.length > 0 && <optgroup label="Tarjetas">
+                  <option value="">{type === 'income' ? 'Selecciona cuenta de abono' : 'Sin medio de pago'}</option>
+                  {type === 'expense' && cards.length > 0 && <optgroup label="Tarjetas">
                     {cards.map(c => <option key={c.id} value={`cc:${c.id}`}>{c.name}</option>)}
                   </optgroup>}
-                  {bankAccounts.length > 0 && <optgroup label="Cuentas corrientes">
+                  {bankAccounts.length > 0 && <optgroup label={type === 'income' ? 'Cuentas' : 'Cuentas corrientes'}>
                     {bankAccounts.map(b => <option key={b.id} value={`ba:${b.id}`}>{b.name}</option>)}
                   </optgroup>}
                 </select>
