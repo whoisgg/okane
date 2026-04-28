@@ -92,7 +92,7 @@ export default function InicioPage() {
         sb.from('transactions')
           .select('*')
           .eq('type', 'expense')
-          .is('bank_account_id', null)
+          .eq('is_transfer', false)
           .gte('date', monthStart)
           .lte('date', monthEnd)
           .order('date', { ascending: false }),
