@@ -95,9 +95,13 @@ function txContributesToCycle(
   const offset = (year - firstYear) * 12 + (month - firstMonth)
   if (offset < 0) return false
   if (tx.is_installment) {
+    // The tx represents cuota K of N for a purchase whose cuota 1 lands in firstCycle.
+    // Project cycles offset = K-1 (cuota K) through N-1 (last cuota).
     const cuotaK = tx.installment_number ?? 1
     const cuotaN = tx.installment_total ?? 1
-    return offset <= Math.max(0, cuotaN - cuotaK)
+    const startOffset = Math.max(0, cuotaK - 1)
+    const endOffset = Math.max(startOffset, cuotaN - 1)
+    return offset >= startOffset && offset <= endOffset
   }
   return offset === 0
 }
