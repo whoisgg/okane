@@ -343,21 +343,6 @@ export default function InicioPage() {
           </div>
         )}
 
-        {/* ── Ingresos del mes ── */}
-        {totalIngresos > 0 && (
-          <div className="rounded-2xl bg-surface border border-border p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-[11px] font-bold uppercase tracking-widest text-text-muted">Ingresos del mes</p>
-                <p className="mt-1 text-2xl font-bold text-success">+{clpFormatted(totalIngresos)}</p>
-              </div>
-              <div className="text-right">
-                <p className="text-[10px] text-text-muted">{incomeTxs.length} {incomeTxs.length === 1 ? 'movimiento' : 'movimientos'}</p>
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* ── Categories ── */}
         {categories.length > 0 && (
           <div>
