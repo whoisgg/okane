@@ -18,6 +18,17 @@ const CAT_LABEL: Record<string,string> = {
   suscripciones:'Suscripciones', financiero:'Financiero', otros:'Compras',
 }
 
+const INCOME_CATEGORIES = [
+  'sueldo','honorarios','bonos','inversiones','arriendo','reembolsos','intereses','otros_ingreso',
+]
+const INCOME_LABEL: Record<string,string> = {
+  sueldo:'Sueldo', honorarios:'Honorarios', bonos:'Bonos',
+  inversiones:'Inversiones', arriendo:'Arriendo', reembolsos:'Reembolsos',
+  intereses:'Intereses', otros_ingreso:'Otros',
+}
+
+const ALL_LABELS: Record<string,string> = { ...CAT_LABEL, ...INCOME_LABEL }
+
 export default function TransactionsPage() {
   return (
     <Suspense>
@@ -243,7 +254,7 @@ function TransactionsContent() {
                       : 'bg-surface-high border-border text-text-muted hover:text-text-primary'
                   }`}
                 >
-                  {CAT_LABEL[cat] ?? cat}
+                  {ALL_LABELS[cat] ?? cat}
                 </button>
               ))}
             </div>
@@ -496,7 +507,12 @@ export function TransactionModal({ cards, subs, loans, bankAccounts, initial, on
           {/* Type tabs */}
           <div className="flex gap-2">
             {(['expense', 'income', 'payment'] as const).map(t => (
-              <button key={t} type="button" onClick={() => setType(t)}
+              <button key={t} type="button" onClick={() => {
+                setType(t)
+                // Reset category to a sensible default for the new type
+                if (t === 'income' && !INCOME_CATEGORIES.includes(category)) setCategory('sueldo')
+                else if (t === 'expense' && !CATEGORIES.includes(category)) setCategory('otros')
+              }}
                 className={`flex-1 rounded-lg py-2 text-sm font-medium transition ${
                   type === t
                     ? t === 'expense' ? 'bg-danger/10 text-danger'
@@ -616,7 +632,11 @@ export function TransactionModal({ cards, subs, loans, bankAccounts, initial, on
                 setCategory(e.target.value)
                 if (e.target.value === 'suscripciones') setIsSubLinked(true)
               }}>
-                {CATEGORIES.map(c => <option key={c} value={c}>{CAT_LABEL[c] ?? c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
+                {(type === 'income' ? INCOME_CATEGORIES : CATEGORIES).map(c => (
+                  <option key={c} value={c}>
+                    {(type === 'income' ? INCOME_LABEL : CAT_LABEL)[c] ?? c.charAt(0).toUpperCase() + c.slice(1)}
+                  </option>
+                ))}
               </select>
 
               {/* Payment source: card OR bank account */}
