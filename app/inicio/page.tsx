@@ -372,7 +372,11 @@ export default function InicioPage() {
                 const nearBudget = hasBudget && !overBudget && barW >= 80
                 const barColor   = overBudget ? 'bg-danger' : nearBudget ? 'bg-warning' : 'bg-accent'
                 return (
-                  <div key={cat} className="flex items-center gap-3 px-4 py-3.5">
+                  <Link
+                    key={cat}
+                    href={`/transactions?month=${monthKey}&cat=${cat}`}
+                    className="flex items-center gap-3 px-4 py-3.5 hover:bg-surface-high transition-colors"
+                  >
                     {/* Icon */}
                     <div className={`flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-xl ${overBudget ? 'bg-danger/10 text-danger' : 'bg-accent/10 text-accent'}`}>
                       <CatIcon cat={cat} />
@@ -399,7 +403,7 @@ export default function InicioPage() {
                         {hasBudget ? `de ${clpAbbreviated(limit)}` : `${Math.round((amount / totalSpent) * 100)}%`}
                       </p>
                     </div>
-                  </div>
+                  </Link>
                 )
               })}
             </div>

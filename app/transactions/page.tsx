@@ -69,6 +69,11 @@ function TransactionsContent() {
       const item = searchParams.get('item')
       if (item) setItemFilter(item)
     }
+    // Standalone month / cat params (used by inicio category cards)
+    const m = searchParams.get('month')
+    if (m) setMonthFilter(m)
+    const c = searchParams.get('cat')
+    if (c) setCatFilter(c)
   }, [searchParams])
 
   const load = useCallback(async () => {
