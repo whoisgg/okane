@@ -452,7 +452,7 @@ export function TransactionModal({ cards, subs, loans, bankAccounts, initial, on
       bank_account_id:  bankAccountId || null,
       is_installment:   false,
       subscription_id:  null,
-      is_transfer:      !isRelevantToFlujo,
+      is_transfer:      bankAccountId ? !isRelevantToFlujo : false,
     } : {
       amount:            parsedAmount,
       currency,
@@ -466,7 +466,7 @@ export function TransactionModal({ cards, subs, loans, bankAccounts, initial, on
       installment_total: isInstallment ? parseInt(installmentTotal) : null,
       subscription_id:   (type === 'expense' && isSubLinked && subscriptionId) ? subscriptionId : null,
       loan_id:           (type === 'expense' && isLoanLinked && loanId) ? loanId : null,
-      is_transfer:       !isRelevantToFlujo,
+      is_transfer:       bankAccountId ? !isRelevantToFlujo : false,
       is_reimbursement:  type === 'income' && isReimbursement,
     }
 
