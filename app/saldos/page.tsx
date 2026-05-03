@@ -676,8 +676,8 @@ export default function SaldosPage() {
                           </div>
                         </div>
                         <div className="ml-3 flex flex-col items-end gap-1 shrink-0">
-                          <span className={`text-sm font-semibold tabular-nums ${tx.type === 'expense' ? 'text-danger' : 'text-success'}`}>
-                            {tx.type === 'expense' ? '−' : '+'}{
+                          <span className={`text-sm font-semibold tabular-nums ${tx.type === 'income' ? 'text-success' : 'text-danger'}`}>
+                            {tx.type === 'income' ? '+' : '−'}{
                               tx.currency === 'USD'
                                 ? usdFormatted(Number(tx.amount))
                                 : clpFormatted(Number(tx.amount))
