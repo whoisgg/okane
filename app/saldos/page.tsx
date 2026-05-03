@@ -676,13 +676,24 @@ export default function SaldosPage() {
                           </div>
                         </div>
                         <div className="ml-3 flex flex-col items-end gap-1 shrink-0">
-                          <span className={`text-sm font-semibold tabular-nums ${tx.type === 'income' ? 'text-success' : 'text-danger'}`}>
-                            {tx.type === 'income' ? '+' : '−'}{
-                              tx.currency === 'USD'
-                                ? usdFormatted(Number(tx.amount))
-                                : clpFormatted(Number(tx.amount))
-                            }
-                          </span>
+                          {(() => {
+                            // Sign depends on which view we're in:
+                            //   bank account: income +, expense/payment − (cash flow)
+                            //   credit card:  expense −, payment +     (debt change)
+                            const isAccount = current?.type === 'account'
+                            const isPositive = isAccount
+                              ? tx.type === 'income'
+                              : tx.type === 'payment'
+                            return (
+                              <span className={`text-sm font-semibold tabular-nums ${isPositive ? 'text-success' : 'text-danger'}`}>
+                                {isPositive ? '+' : '−'}{
+                                  tx.currency === 'USD'
+                                    ? usdFormatted(Number(tx.amount))
+                                    : clpFormatted(Number(tx.amount))
+                                }
+                              </span>
+                            )
+                          })()}
                           <span className={`rounded px-1.5 py-px text-[9px] font-bold tracking-wider ${
                             tx.currency === 'USD'
                               ? 'bg-emerald-500/10 text-emerald-600'
