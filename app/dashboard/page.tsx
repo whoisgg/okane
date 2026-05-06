@@ -337,8 +337,17 @@ export default function DashboardPage() {
               if (match) forecastCCBilled += match.amount
             }
 
-            // 3. Add manual unmatched (sin facturar) CLP transactions in this billing period
-            forecastCCUnbilled += billingTotalUnbilled(cardTxsData, card.id, card.closing_day, m, y)
+            // 3. Add manual unmatched (sin facturar) CLP transactions in this billing period,
+            //    minus any prepayments already made within the same billing period
+            //    (only the differential should hit the cashflow).
+            const unbilledForCard = billingTotalUnbilled(cardTxsData, card.id, card.closing_day, m, y)
+            const [pStart, pEnd] = billingPeriod(card.closing_day, m, y)
+            const pStartStr = pStart.toISOString().split('T')[0]
+            const pEndStr   = pEnd.toISOString().split('T')[0]
+            const prepaidForCard = ccPaymentsData
+              .filter(p => p.credit_card_id === card.id && p.date >= pStartStr && p.date <= pEndStr)
+              .reduce((s, p) => s + Number(p.amount), 0)
+            forecastCCUnbilled += Math.max(0, unbilledForCard - prepaidForCard)
           }
         }
 
@@ -789,19 +798,18 @@ export default function DashboardPage() {
                       const showUploadCTA = unbilledAmount > 0 && !hasExactCartola
                       const showUSDUploadCTA = unbilledUSDAmount > 0 && !hasExactUSDCartola
 
-                      // Last payment for this card within the selected billing period
-                      const lastPayment = (() => {
-                        if (!closeDay) return null
+                      // Payments made within the selected billing period (prepayments)
+                      const periodPayments = (() => {
+                        if (!closeDay) return [] as typeof ccPayments
                         const [pStart, pEnd] = billingPeriod(closeDay, sel.month, sel.year)
                         const pStartStr = pStart.toISOString().split('T')[0]
                         const pEndStr   = pEnd.toISOString().split('T')[0]
                         return ccPayments
                           .filter(p => p.credit_card_id === card.id && p.date >= pStartStr && p.date <= pEndStr)
-                          .sort((a, b) => b.date.localeCompare(a.date))[0] ?? null
                       })()
-                      const paymentDaysAgo = lastPayment
-                        ? Math.round((Date.now() - new Date(lastPayment.date).getTime()) / 86400000)
-                        : null
+                      const prepaidTotal = periodPayments.reduce((s, p) => s + Number(p.amount), 0)
+                      const netoSinFacturar = unbilledAmount - prepaidTotal
+                      const netPeriodTotal = periodTotal !== null ? Math.max(0, periodTotal - prepaidTotal) : null
 
                       // Closing status (only for current month)
                       const today = new Date()
@@ -832,8 +840,8 @@ export default function DashboardPage() {
                             <div className="text-right">
                               {periodTotal !== null ? (
                                 <>
-                                  <p className={`text-base font-bold ${periodTotal > 0 ? 'text-danger' : 'text-text-muted'}`}>
-                                    {periodTotal > 0 ? clpFormatted(periodTotal) : '$0'}
+                                  <p className={`text-base font-bold ${(netPeriodTotal ?? 0) > 0 ? 'text-danger' : 'text-text-muted'}`}>
+                                    {(netPeriodTotal ?? 0) > 0 ? clpFormatted(netPeriodTotal!) : '$0'}
                                   </p>
                                   {usdUpload && (
                                     <div className="mt-0.5">
@@ -871,45 +879,56 @@ export default function DashboardPage() {
                             </div>
                           )}
                           {showUploadCTA && (
-                            <div className="mt-2 flex items-center justify-between rounded-lg bg-warning/10 px-3 py-2">
+                            <div className="mt-2 flex items-center justify-between gap-2 rounded-lg bg-warning/10 px-3 py-2">
                               <Link
                                 href={`/transactions?filter=sin_facturar&sfType=cc_clp&month=${sel.year}-${String(sel.month).padStart(2, '0')}&item=cc:${card.id}`}
-                                className="flex items-center gap-1.5 text-xs text-warning hover:underline"
+                                className="flex min-w-0 items-center gap-1.5 text-xs text-warning hover:underline overflow-x-auto whitespace-nowrap"
                               >
-                                <span>⚠</span>
+                                <span className="shrink-0">⚠</span>
                                 <span>{clpFormatted(unbilledAmount)} sin facturar</span>
+                                {prepaidTotal > 0 && (
+                                  <>
+                                    <span className="text-text-muted">−</span>
+                                    <span className="text-success">{clpFormatted(prepaidTotal)} pagado</span>
+                                    <span className={`font-semibold ${netoSinFacturar > 0 ? 'text-warning' : 'text-success'}`}>
+                                      {netoSinFacturar > 0
+                                        ? `→ ${clpFormatted(netoSinFacturar)}`
+                                        : netoSinFacturar < 0
+                                          ? `→ a favor ${clpFormatted(-netoSinFacturar)}`
+                                          : '→ $0'}
+                                    </span>
+                                  </>
+                                )}
                               </Link>
                               <Link
                                 href="/cartolas"
-                                className="flex items-center gap-1 text-xs font-semibold text-warning hover:underline"
+                                aria-label="Subir cartola"
+                                title="Subir cartola"
+                                className="flex shrink-0 items-center gap-1 text-xs font-semibold text-warning hover:underline"
                               >
-                                📄 Subir cartola →
+                                <span>📄</span>
+                                <span className="hidden sm:inline">Subir cartola →</span>
                               </Link>
                             </div>
                           )}
                           {showUSDUploadCTA && (
-                            <div className="mt-2 flex items-center justify-between rounded-lg bg-warning/10 px-3 py-2">
+                            <div className="mt-2 flex items-center justify-between gap-2 rounded-lg bg-warning/10 px-3 py-2">
                               <Link
                                 href={`/transactions?filter=sin_facturar&sfType=cc_usd&month=${sel.year}-${String(sel.month).padStart(2, '0')}&item=cc:${card.id}`}
-                                className="flex items-center gap-1.5 text-xs text-warning hover:underline"
+                                className="flex min-w-0 items-center gap-1.5 text-xs text-warning hover:underline overflow-x-auto whitespace-nowrap"
                               >
-                                <span>⚠</span>
+                                <span className="shrink-0">⚠</span>
                                 <span>US$ {unbilledUSDAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} sin facturar</span>
                               </Link>
                               <Link
                                 href="/cartolas"
-                                className="flex items-center gap-1 text-xs font-semibold text-warning hover:underline"
+                                aria-label="Subir cartola"
+                                title="Subir cartola"
+                                className="flex shrink-0 items-center gap-1 text-xs font-semibold text-warning hover:underline"
                               >
-                                📄 Subir cartola →
+                                <span>📄</span>
+                                <span className="hidden sm:inline">Subir cartola →</span>
                               </Link>
-                            </div>
-                          )}
-                          {lastPayment && (
-                            <div className="mt-2 flex items-center justify-between">
-                              <span className="text-[11px] text-success">✓ Pagado {clpFormatted(Number(lastPayment.amount))}</span>
-                              <span className="text-[11px] text-text-muted">
-                                {paymentDaysAgo === 0 ? 'hoy' : paymentDaysAgo === 1 ? 'ayer' : `hace ${paymentDaysAgo} días`}
-                              </span>
                             </div>
                           )}
                         </div>
@@ -927,12 +946,21 @@ export default function DashboardPage() {
                         const closingDayStr2 = new Date(sel.year, sel.month - 1, c.closing_day).toISOString().split('T')[0]
                         const periodEndStrs2 = [periodEndStr, closingDayStr2]
 
+                        // Prepayments made in this billing period (already paid → don't count as "a pagar")
+                        const [pStartT, pEndT] = billingPeriod(c.closing_day, sel.month, sel.year)
+                        const pStartStrT = pStartT.toISOString().split('T')[0]
+                        const pEndStrT   = pEndT.toISOString().split('T')[0]
+                        const prepaidT = ccPayments
+                          .filter(p => p.credit_card_id === c.id && p.date >= pStartStrT && p.date <= pEndStrT)
+                          .reduce((s, p) => s + Number(p.amount), 0)
+
                         // CLP portion
                         const clpUpload = cartolaUploads.find(u =>
                           u.credit_card_id === c.id && periodEndStrs2.includes(u.period_end ?? '') && u.currency !== 'USD'
                         )
+                        let cardClpGross = 0
                         if (clpUpload) {
-                          clpTotal += clpUpload.total_amount
+                          cardClpGross = clpUpload.total_amount
                         } else {
                           const latestWithUpcoming = cartolaUploads
                             .filter(u => u.credit_card_id === c.id && u.upcoming_amounts)
@@ -941,8 +969,9 @@ export default function DashboardPage() {
                             const d = new Date(up.dueDate)
                             return d.getMonth() === periodEnd.getMonth() && d.getFullYear() === periodEnd.getFullYear()
                           })
-                          clpTotal += upcoming ? upcoming.amount : billingTotal(cardTxs, c.id, c.closing_day, sel.month, sel.year)
+                          cardClpGross = upcoming ? upcoming.amount : billingTotal(cardTxs, c.id, c.closing_day, sel.month, sel.year)
                         }
+                        clpTotal += Math.max(0, cardClpGross - prepaidT)
 
                         // USD portion — find USD cartola for same card + period
                         const usdUpload = cartolaUploads.find(u =>

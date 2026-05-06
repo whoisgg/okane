@@ -246,10 +246,17 @@ export default function InicioPage() {
   const reimbursements = incomeTxs.filter(t => t.is_reimbursement && (t.currency ?? 'CLP') === 'CLP')
   const totalReimbursed = reimbursements.reduce((s, t) => s + Number(t.amount), 0)
 
+  // For installment purchases, only the current month's cuota counts toward the month's spend.
+  const monthShare = (t: { amount: number | string; is_installment?: boolean; installment_total?: number | null }) => {
+    const a = Number(t.amount)
+    const n = t.installment_total ?? 0
+    return t.is_installment && n > 1 ? a / n : a
+  }
+
   // Budget calculations — only CLP transactions count toward the budget
   const grossSpent = txs
     .filter(t => (t.currency ?? 'CLP') === 'CLP')
-    .reduce((s, t) => s + Number(t.amount), 0)
+    .reduce((s, t) => s + monthShare(t), 0)
   const totalSpent  = Math.max(0, grossSpent - totalReimbursed)
   const budget      = Number(settings?.monthly_budget ?? 0)
   const savingsGoal = Number(settings?.savings_goal ?? 0)
@@ -264,7 +271,7 @@ export default function InicioPage() {
   for (const tx of txs) {
     if ((tx.currency ?? 'CLP') === 'USD') continue        // skip USD (separate currency)
     const cat = normalizeCat(tx.category ?? 'otros')
-    catMap[cat] = (catMap[cat] ?? 0) + Number(tx.amount)
+    catMap[cat] = (catMap[cat] ?? 0) + monthShare(tx)
   }
   for (const r of reimbursements) {
     const cat = normalizeCat(r.category ?? 'otros')

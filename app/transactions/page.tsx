@@ -298,8 +298,12 @@ function TransactionsContent() {
                         </span>
                         <span className="text-xs text-text-muted">{tx.category}</span>
                         {card && <span className="badge bg-border text-text-muted">{card.name}</span>}
-                        {tx.is_installment && tx.installment_number != null && (
-                          <span className="badge bg-accent/10 text-accent">{tx.installment_number}/{tx.installment_total}</span>
+                        {tx.is_installment && (tx.installment_total ?? 0) > 1 && (
+                          <span className="badge bg-accent/10 text-accent">
+                            {tx.installment_number != null
+                              ? `${tx.installment_number}/${tx.installment_total} cuotas`
+                              : `${tx.installment_total} cuotas`}
+                          </span>
                         )}
                         {tx.is_from_cartola && <span className="badge bg-success/10 text-success">cartola</span>}
                         {!tx.is_from_cartola && tx.credit_card_id && tx.match_status !== 'matched' && (
